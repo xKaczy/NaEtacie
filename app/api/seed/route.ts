@@ -31,7 +31,24 @@ const ANNOUNCEMENTS = [
   { title: 'Regipsy, sufity podwieszane, zabudowy GK', description: 'Montaż ścianek z płyt GK, sufitów podwieszanych, zabudów instalacji. Certyfikat Knauf.', source_portal: 'oferteo', category: 'wykończenia', location_text: 'Szczecin, Gumieńce', latitude: 53.4000, longitude: 14.5100, price: 55 },
 ];
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+  const seedSecret = process.env.SEED_SECRET;
+
+  if (process.env.NODE_ENV === 'production') {
+    const isAuthorized =
+      (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
+      (seedSecret && authHeader === `Bearer ${seedSecret}`);
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Seed endpoint is disabled in production' },
+        { status: 403 }
+      );
+    }
+  }
+
   try {
     const batch = adminFirestore.batch();
     const now = new Date();

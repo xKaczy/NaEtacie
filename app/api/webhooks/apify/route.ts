@@ -19,6 +19,14 @@ export async function POST(request: Request): Promise<NextResponse> {
   const authHeader = request.headers.get('authorization');
   const configuredSecret = process.env.APIFY_WEBHOOK_SECRET;
 
+  // In production, an Apify webhook secret must be configured and verified
+  if (process.env.NODE_ENV === 'production' && !configuredSecret) {
+    return NextResponse.json(
+      { success: false, error: 'Server misconfiguration: APIFY_WEBHOOK_SECRET missing in production' },
+      { status: 500 }
+    );
+  }
+
   // Authorization check if webhook secret is configured
   if (configuredSecret) {
     const isSecretValid =

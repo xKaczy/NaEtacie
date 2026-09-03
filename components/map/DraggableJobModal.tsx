@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { GripHorizontal, X, MapPin, Compass, Globe, Heart, Phone, ListFilter, QrCode, Share2, Search, Check, MessageSquare } from 'lucide-react';
+import { GripHorizontal, X, MapPin, Compass, Globe, Heart, Phone, ListFilter, QrCode, Share2, Search, Check, MessageSquare, Flag } from 'lucide-react';
 import type { DisplayAnnouncement } from '@/lib/types/display';
 import { CATEGORIES, normalizeCategory } from '@/lib/data/categories';
 import { getAnnouncementExternalUrl, triggerHaptic } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { haversineKm } from '@/lib/matching/engine';
 import { OlxLinkActions } from '@/components/olx/OlxLinkActions';
 import { OlxQrModal } from '@/components/olx/OlxQrModal';
 import { PitchGeneratorModal } from '@/components/contact/PitchGeneratorModal';
+import { ReportAdModal } from '@/components/feedback/ReportAdModal';
 
 export interface DraggableJobModalProps {
   ad: DisplayAnnouncement | null;
@@ -42,6 +43,7 @@ export function DraggableJobModal({
   const dragControls = useDragControls();
   const [qrOpen, setQrOpen] = useState(false);
   const [pitchOpen, setPitchOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const distKm = useMemo(() => {
@@ -326,6 +328,23 @@ export function DraggableJobModal({
                 </div>
               )}
             </div>
+
+            {/* Source & RODO / Report Trigger */}
+            <div className="pt-1.5 flex items-center justify-between text-[9.5px] text-muted-foreground px-0.5">
+              <span>Źródło: {ad.source_portal.toUpperCase()}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic(10);
+                  setReportOpen(true);
+                }}
+                className="hover:text-rose-400 transition-colors flex items-center gap-1 cursor-pointer font-medium"
+                title="Zgłoś nieaktualne ogłoszenie lub poproś o usunięcie danych (RODO)"
+              >
+                <Flag className="w-2.5 h-2.5 text-rose-500/80" />
+                <span>Zgłoś / RODO</span>
+              </button>
+            </div>
           </div>
         </motion.div>
       </AnimatePresence>
@@ -345,6 +364,14 @@ export function DraggableJobModal({
         location={ad.location_text}
         sourcePortal={ad.source_portal}
         defaultPrice={typeof ad.price === 'number' ? ad.price : null}
+      />
+
+      <ReportAdModal
+        isOpen={reportOpen}
+        onClose={() => setReportOpen(false)}
+        adId={ad.id}
+        adTitle={ad.title}
+        phone={ad.phone}
       />
     </>
   );

@@ -20,13 +20,13 @@ export interface AnnouncementListProps {
  */
 function formatPrice(price: number | null): string {
   if (price === null) {
-    return 'N/A';
+    return 'Wycena';
   }
-  return `${price.toLocaleString('pl-PL')} PLN`;
+  return `${price.toLocaleString('pl-PL')} zł`;
 }
 
 /**
- * Format scraped_at as a relative time string (e.g., "2h ago", "3d ago").
+ * Format scraped_at as a Polish relative time string (e.g., "2 godz. temu", "3 dni temu").
  */
 function formatRelativeTime(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -38,11 +38,12 @@ function formatRelativeTime(date: Date | string): string {
   const diffDay = Math.floor(diffHr / 24);
   const diffWeek = Math.floor(diffDay / 7);
 
-  if (diffSec < 60) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  if (diffHr < 24) return `${diffHr}h ago`;
-  if (diffDay < 7) return `${diffDay}d ago`;
-  if (diffWeek < 4) return `${diffWeek}w ago`;
+  if (diffSec < 60) return 'przed chwilą';
+  if (diffMin < 60) return `${diffMin} min temu`;
+  if (diffHr < 24) return `${diffHr} godz. temu`;
+  if (diffDay === 1) return 'wczoraj';
+  if (diffDay < 7) return `${diffDay} dni temu`;
+  if (diffWeek < 4) return `${diffWeek} tyg. temu`;
   return d.toLocaleDateString('pl-PL', { month: 'short', day: 'numeric' });
 }
 
@@ -50,13 +51,24 @@ function formatRelativeTime(date: Date | string): string {
  * Get display label for source portal badge.
  */
 function getPortalLabel(portal: string): string {
-  switch (portal) {
+  const p = (portal || '').toLowerCase();
+  switch (p) {
     case 'olx':
       return 'OLX';
     case 'oferteo':
       return 'Oferteo';
     case 'fixly':
       return 'Fixly';
+    case 'pracuj':
+      return 'Pracuj.pl';
+    case 'indeed':
+      return 'Indeed';
+    case 'jooble':
+      return 'Jooble';
+    case 'gowork':
+      return 'GoWork';
+    case 'bip_szczecin':
+      return 'BIP Szczecin';
     default:
       return portal;
   }
@@ -229,16 +241,57 @@ export default function AnnouncementList({ onItemClick }: AnnouncementListProps)
 
   const variants = prefersReducedMotion ? reducedMotionVariants : cardVariants;
 
+  const [activeFilter, setActiveFilter] = useState<'all' | 'cito' | 'salary' | 'budowa' | 'wykończenia' | 'instalacje'>('all');
+
+  const filteredAnnouncements = announcements.filter((ad) => {
+    if (activeFilter === 'cito') {
+      return /cito|piln|od zaraz|natychmiast/i.test(ad.title || '');
+    }
+    if (activeFilter === 'salary') {
+      return ad.price != null && ad.price > 0;
+    }
+    if (activeFilter === 'budowa' || activeFilter === 'wykończenia' || activeFilter === 'instalacje') {
+      return (ad.category || '').toLowerCase().includes(activeFilter);
+    }
+    return true;
+  });
+
   return (
     <div className="announcement-list">
+      {/* Quick Filter Chips */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 pt-0.5 select-none -mx-1 px-1">
+        {[
+          { id: 'all', label: 'Wszystkie', icon: '📋' },
+          { id: 'cito', label: 'CITO / Pilne', icon: '⚡' },
+          { id: 'salary', label: 'Ze stawką', icon: '💰' },
+          { id: 'wykończenia', label: 'Wykończenia', icon: '🎨' },
+          { id: 'instalacje', label: 'Instalacje', icon: '🔧' },
+          { id: 'budowa', label: 'Stan surowy', icon: '🏗️' },
+        ].map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => setActiveFilter(chip.id as any)}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer border ${
+              activeFilter === chip.id
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-xs'
+                : 'bg-muted/70 hover:bg-muted text-muted-foreground hover:text-foreground border-border/50'
+            }`}
+          >
+            <span>{chip.icon}</span>
+            <span>{chip.label}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Guest mode banner (Requirement 1.4) */}
       {isGuest && announcements.length > 0 && (
-        <div className="announcement-list__guest-banner" role="status">
-          <span>Viewing delayed data (48h+). Register for full access.</span>
+        <div className="announcement-list__guest-banner bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs font-semibold rounded-xl p-2.5 text-center flex items-center justify-center gap-2" role="status">
+          <span>🔒 Tryb gościa: zaloguj się bezpłatnie, aby odkryć bezpośrednie numery telefonów do inwestorów i majstrów.</span>
         </div>
       )}
 
-      {announcements.map((announcement, index) => {
+      {filteredAnnouncements.map((announcement, index) => {
         const portalLabel = getPortalLabel(announcement.source_portal);
         const directOfferUrl = getAnnouncementExternalUrl(announcement);
 
@@ -307,22 +360,22 @@ export default function AnnouncementList({ onItemClick }: AnnouncementListProps)
 
       {/* End of list message */}
       {!hasMore && announcements.length > 0 && !isLoading && (
-        <div className="announcement-list__end" aria-live="polite">
-          No more announcements
+        <div className="announcement-list__end text-center text-xs text-muted-foreground py-4 font-medium" aria-live="polite">
+          To już wszystkie ogłoszenia w tym widoku
         </div>
       )}
 
       {/* Error state */}
       {error && (
-        <div className="announcement-list__error" role="alert">
+        <div className="announcement-list__error text-center text-xs text-rose-500 py-4 font-semibold" role="alert">
           {error}
         </div>
       )}
 
       {/* Empty state */}
-      {!isLoading && !error && announcements.length === 0 && !hasMore && (
-        <div className="announcement-list__empty">
-          No announcements available
+      {!isLoading && !error && filteredAnnouncements.length === 0 && (
+        <div className="announcement-list__empty text-center text-xs text-muted-foreground py-8 font-medium">
+          Brak ofert w wybranej kategorii
         </div>
       )}
 
@@ -347,6 +400,8 @@ export default function AnnouncementList({ onItemClick }: AnnouncementListProps)
         }
 
         .announcement-card {
+          content-visibility: auto;
+          contain-intrinsic-size: 140px;
           display: flex;
           flex-direction: column;
           gap: var(--spacing-2, 8px);

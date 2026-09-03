@@ -12,6 +12,24 @@ export const maxDuration = 30;
 const ALL_PORTALS: SupportedPortal[] = ['olx', 'pracuj', 'indeed', 'jooble', 'gowork', 'oferteo', 'fixly'];
 
 export async function GET(request: Request): Promise<NextResponse> {
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+  const adminSecret = process.env.ADMIN_SECRET;
+
+  // Protect on-demand scraper endpoint in production
+  if (process.env.NODE_ENV === 'production') {
+    const isAuthorized =
+      (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
+      (adminSecret && authHeader === `Bearer ${adminSecret}`);
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: On-demand scraper requires administrative authorization' },
+        { status: 401 }
+      );
+    }
+  }
+
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '60', 10), 100);
   const customQuery = url.searchParams.get('query') || undefined;

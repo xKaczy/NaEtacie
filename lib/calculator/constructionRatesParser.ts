@@ -45,7 +45,7 @@ export function parseConstructionRate(
   } else if (lower.includes('b2b') || lower.includes('faktura') || lower.includes('+ vat') || lower.includes('+vat')) {
     rateMode = 'b2b_netto';
     isGross = false;
-  } else if (lower.includes('na rękę') || lower.includes('na reke') || lower.includes('do ręki') || lower.includes('do reki')) {
+  } else if (lower.includes('na rękę') || lower.includes('na reke') || lower.includes('do ręki') || lower.includes('do reki') || lower.includes('do łapy') || lower.includes('do lapy') || lower.includes('na czysto')) {
     rateMode = 'na_reke';
     isGross = false;
   } else if (lower.includes('netto')) {
@@ -84,10 +84,10 @@ export function parseConstructionRate(
   } else if (/punkt|pkt/i.test(lower)) {
     unit = 'point';
     unitLabel = `${currency === 'EUR' ? '€' : 'zł'}/punkt`;
-  } else if (/dniówk|dniowk|dzień|dziennie|\/dzień|\/dzien/i.test(lower)) {
+  } else if (/dniówk|dniowk|dzień|dziennie|\/dzień|\/dzien|\bna\s+dzień\b|\bna\s+dzien\b/i.test(lower)) {
     unit = 'daily';
     unitLabel = `${currency === 'EUR' ? '€' : 'zł'}/dzień`;
-  } else if (/\/\s*h\b|\/\s*godz|\bza\s+godzin|godzinow/i.test(lower)) {
+  } else if (/\/\s*h\b|\/\s*godz|\bza\s+godzin|godzinow|\bna\s+h\b|\bh\/netto\b|\bh\s*netto\b/i.test(lower)) {
     unit = 'hourly';
     unitLabel = `${currency === 'EUR' ? '€' : 'zł'}/h`;
   } else if (/ryczałt|ryczalt|za\s+całość|za\s+calosc|zlecenie\b/i.test(lower)) {

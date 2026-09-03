@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -22,16 +22,18 @@ export function generateMetadata({ params }: Props): Metadata {
   const page = getSeoPageBySlug(params.slug);
   if (!page) return { title: 'Nie znaleziono – NaEtacie Szczecin' };
 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://naetacie.pl';
+
   return {
     title: page.title,
     description: page.metaDescription,
     alternates: {
-      canonical: `https://naetacie.vercel.app/praca/${page.slug}`,
+      canonical: `${baseUrl}/praca/${page.slug}`,
     },
     openGraph: {
       title: page.title,
       description: page.metaDescription,
-      url: `https://naetacie.vercel.app/praca/${page.slug}`,
+      url: `${baseUrl}/praca/${page.slug}`,
       siteName: 'NaEtacie Szczecin',
       locale: 'pl_PL',
       type: 'website',

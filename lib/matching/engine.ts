@@ -28,6 +28,17 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * Realistic road distance in Szczecin factoring in Odra/Regalica river crossings and road winding.
+ * Cross-river transit (Lewobrzeże <-> Prawobrzeże) adds additional detour distance for bridge access.
+ */
+export function szczecinRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const straightLine = haversineKm(lat1, lng1, lat2, lng2);
+  const crossesOdra = (lng1 < 14.57 && lng2 > 14.59) || (lng1 > 14.59 && lng2 < 14.57);
+  const roadFactor = crossesOdra ? 1.45 : 1.25;
+  return Math.round(straightLine * roadFactor * 10) / 10;
+}
+
 /** Extract a numeric monthly salary from the price field. */
 function numericSalary(price: string | number | null): number | null {
   if (price === null) return null;

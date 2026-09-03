@@ -209,10 +209,11 @@ Interfejs zoptymalizowano pod kątem maksymalnej czytelności na ekranach OLED i
 - [x] **Kalkulator Dojazdu na 6:30 Rano**: Bezpośredni przycisk transportowy `🚌 ZDiTM 6:30` (autobusy/tramwaje Szczecina) oraz trasa samochodowa `🚗 Auto`.
 - [x] **Szczeciński Przybornik Materiałowy**: Silnik kalkulacji zapotrzebowania płyt G-K, profili, gładzi i farb (`lib/calculator/materialDemandEstimator.ts`).
 
-### Etap 6: Persystencja Bazy, Monetyzacja B2B i SEO Szczecina (W toku)
+### Etap 6: Persystencja Bazy, Monetyzacja B2B, Przygranicze DE i SEO Szczecina (Wdrożone)
 - [x] **Generator Umów Budowlanych i Protokołów Odbioru**: Generowanie gotowych szablonów umów o roboty budowlane oraz protokołów odbioru robót bez zastrzeżeń / z uwagami (`lib/contracts/contractGenerator.ts`).
+- [x] **Programmatic SEO dla Dzielnic i Zawodów Szczecina**: Automatyczne strony lądowania (`/praca/malarz-szczecin`, `/praca/praca-pogodno`, SSG) indeksujące oferty w Google (`lib/seo/seoPagesConfig.ts`, `app/praca/[slug]/page.tsx`).
+- [x] **Strefa Przygraniczna Niemcy (DE / EUR)**: Filtr „Przygranicze DE (€)”, katalog miast przygranicznych (Löcknitz, Pasewalk, Schwedt) i przelicznik EUR/PLN (`lib/geo/germanBorderZone.ts`, `QuickFilterBar.tsx`).
 - [ ] **Klucz Produkcyjny Firebase lub Fallback DB**: Zabezpieczenie ciągłego zapisu ofert ze scrapera w chmurze bez fallbacku na seed.
-- [ ] **Programmatic SEO dla Dzielnic Szczecina**: Automatyczne strony lądowania (`/praca/malarz-szczecin`, `/praca/pogodno`) indeksujące oferty w Google.
 
 ---
 

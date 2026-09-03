@@ -1429,6 +1429,7 @@ export default function HomePage() {
                   }
                   setActiveQuickFilter(filterId);
                   if (filterId === 'urgent') setSearchQuery('pilne');
+                  else if (filterId === 'german_border') setSearchQuery('Niemcy');
                   else if (filterId === 'mega_projects') setSearchQuery('budowa');
                   else if (filterId === 'high_pay') setSortBy('price-desc');
                   else if (filterId === 'today') setSearchQuery('dzisiaj');

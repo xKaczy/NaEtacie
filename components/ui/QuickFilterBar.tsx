@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Zap, MapPin, Briefcase, Sparkles, SlidersHorizontal, Sun, Flame, Building2 } from 'lucide-react';
+import { Zap, MapPin, Briefcase, Sparkles, SlidersHorizontal, Sun, Flame, Building2, Globe } from 'lucide-react';
 import { cn, triggerHaptic } from '@/lib/utils';
 import { useTheme } from '@/components/theme/ThemeProvider';
 
@@ -15,6 +15,7 @@ export interface QuickFilter {
 
 const QUICK_FILTERS: QuickFilter[] = [
   { id: 'urgent', label: '🚨 Na Cito / Pilne', icon: Flame, color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/30' },
+  { id: 'german_border', label: '🇩🇪 Przygranicze DE (€)', icon: Globe, color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
   { id: 'mega_projects', label: '🏗️ Wielkie Budowy', icon: Building2, color: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30' },
   { id: 'high_pay', label: '💰 Wysokie stawki (>45 zł/h)', icon: Zap, color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30' },
   { id: 'today', label: '✨ Dodane dzisiaj', icon: Sparkles, color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },

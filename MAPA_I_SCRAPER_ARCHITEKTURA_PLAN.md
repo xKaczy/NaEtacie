@@ -204,14 +204,14 @@ Interfejs zoptymalizowano pod kątem maksymalnej czytelności na ekranach OLED i
 - [x] Utworzenie i wypchnięcie pełnego kodu do nowego repozytorium: `https://github.com/xKaczy/NaEtacie`.
 - [ ] Przepięcie webhooków i Git Providera w Vercelu na `xKaczy/NaEtacie` dla automatycznych wdrożeń po każdym `git push`.
 
-### Etap 5: Mobilny Przybornik Fachowca (Narzędzia Terenowe)
-- [ ] **1-Tap Szybki SMS / WhatsApp**: Generowanie gotowej wiadomości zgłoszeniowej do majstra jednym dotknięciem (brak konieczności pisania CV w rękawicach roboczych).
-- [ ] **Kalkulator Dojazdu na 6:30 Rano**: Precyzyjny czas dotarcia na budowę z uwzględnieniem porannego rozkładu ZDiTM Szczecin, SKM i korków na mostach odrzańskich.
-- [ ] **Filtr Zleceń na Weekend / Od zaraz**: Oznaczanie ofert pilnych („potrzebny od jutra / sobota fucha”).
+### Etap 5: Mobilny Przybornik Fachowca (Wdrożone)
+- [x] **1-Tap Szybki SMS / WhatsApp**: Generowanie gotowej wiadomości zgłoszeniowej do majstra jednym dotknięciem na mapie i w dolnej karcie (`MapView.tsx`, `MobileBottomSheet.tsx`, `lib/geo/transitRouting.ts`).
+- [x] **Kalkulator Dojazdu na 6:30 Rano**: Bezpośredni przycisk transportowy `🚌 ZDiTM 6:30` (autobusy/tramwaje Szczecina) oraz trasa samochodowa `🚗 Auto`.
+- [x] **Szczeciński Przybornik Materiałowy**: Silnik kalkulacji zapotrzebowania płyt G-K, profili, gładzi i farb (`lib/calculator/materialDemandEstimator.ts`).
 
-### Etap 6: Persystencja Bazy, Monetyzacja i SEO Szczecina
+### Etap 6: Persystencja Bazy, Monetyzacja B2B i SEO Szczecina (W toku)
+- [x] **Generator Umów Budowlanych i Protokołów Odbioru**: Generowanie gotowych szablonów umów o roboty budowlane oraz protokołów odbioru robót bez zastrzeżeń / z uwagami (`lib/contracts/contractGenerator.ts`).
 - [ ] **Klucz Produkcyjny Firebase lub Fallback DB**: Zabezpieczenie ciągłego zapisu ofert ze scrapera w chmurze bez fallbacku na seed.
-- [ ] **Kalkulator Kosztorysowy i Generator Umów Budowlanych**: Formularz PDF umowy o dzieło/zlecenie i protokołu odbioru robót dla samozatrudnionych.
 - [ ] **Programmatic SEO dla Dzielnic Szczecina**: Automatyczne strony lądowania (`/praca/malarz-szczecin`, `/praca/pogodno`) indeksujące oferty w Google.
 
 ---

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 export type MapStyleType =
+  | 'baltic-slate'
   | 'emerald'
   | 'light'
   | 'dark'
@@ -21,6 +22,12 @@ const mapboxToken =
   (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_MAPBOX_TOKEN) || '';
 
 export const MAP_STYLE_OPTIONS: MapStyleOption[] = [
+  {
+    id: 'baltic-slate',
+    label: '⚓ Baltic Slate (Szczecin 3D)',
+    icon: '⚓',
+    styleUrl: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  },
   {
     id: 'emerald',
     label: 'Zieleń Szmaragdowa',
@@ -116,7 +123,7 @@ export function MapStyleSelector({
           color: ui.text,
         }}
       >
-        🌿
+        {activeOption.icon}
       </button>
 
       {open && (

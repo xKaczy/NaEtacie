@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { SZCZECIN_COMMUTE_BASES } from '@/lib/geo/isochroneCalculator';
 import { SZCZECIN_MEGA_PROJECTS, MegaConstructionProject } from '@/lib/geo/szczecinMegaProjects';
+import { SZCZECIN_LANDMARKS_3D, SzczecinLandmark3D } from '@/lib/geo/szczecinLandmarks3D';
 import type { SunlightMode } from '@/lib/geo/sunlightEngine';
 import { triggerHaptic } from '@/lib/utils';
 
@@ -29,6 +30,8 @@ export interface Map3DState {
   showIsochrone: boolean;
   showSalaryPillars: boolean;
   showDemandHeatmap: boolean;
+  showLandmarks3D?: boolean;
+  selectedLandmark?: SzczecinLandmark3D | null;
   isDroneOrbiting: boolean;
   isochroneMinutes: number;
   selectedBaseKey: string;
@@ -41,6 +44,7 @@ interface Map3DControlHubProps {
   onChange: (updater: (prev: Map3DState) => Map3DState) => void;
   onFlyToCoordinates?: (lng: number, lat: number, zoom?: number) => void;
   onOpenProjectModal?: (project: MegaConstructionProject) => void;
+  onOpenLandmarkModal?: (landmark: SzczecinLandmark3D) => void;
 }
 
 export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
@@ -48,9 +52,10 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
   onChange,
   onFlyToCoordinates,
   onOpenProjectModal,
+  onOpenLandmarkModal,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'layers' | 'sunlight' | 'commute' | 'projects' | 'salary'>('layers');
+  const [activeTab, setActiveTab] = useState<'layers' | 'sunlight' | 'commute' | 'projects' | 'landmarks' | 'salary'>('layers');
 
   const toggleLayer = (key: keyof Map3DState) => {
     triggerHaptic(10);
@@ -69,6 +74,17 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
     }));
     onFlyToCoordinates?.(project.coordinates[0], project.coordinates[1], 15);
     onOpenProjectModal?.(project);
+  };
+
+  const handleSelectLandmark = (landmark: SzczecinLandmark3D) => {
+    triggerHaptic(12);
+    onChange((prev) => ({
+      ...prev,
+      selectedLandmark: landmark,
+      showLandmarks3D: true,
+    }));
+    onFlyToCoordinates?.(landmark.coordinates[0], landmark.coordinates[1], 16);
+    onOpenLandmarkModal?.(landmark);
   };
 
   const setSunlight = (mode: SunlightMode) => {
@@ -129,7 +145,7 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="fixed sm:absolute top-16 sm:top-14 inset-x-3 sm:inset-x-auto sm:right-3 z-40 w-auto sm:w-[360px] max-h-[80vh] bg-card/95 backdrop-blur-2xl border border-border/80 rounded-2xl shadow-2xl text-card-foreground overflow-hidden flex flex-col"
+              className="fixed sm:absolute top-16 sm:top-14 inset-x-3 sm:inset-x-auto sm:right-3 z-40 w-auto sm:w-[380px] max-h-[82vh] bg-card/95 backdrop-blur-2xl border border-border/80 rounded-2xl shadow-2xl text-card-foreground overflow-hidden flex flex-col"
             >
             {/* Modal Header */}
             <div className="flex items-center justify-between p-3.5 border-b border-border/60 bg-muted/30">
@@ -152,7 +168,7 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
             </div>
 
             {/* Tab Navigation */}
-            <div className="grid grid-cols-5 text-[11px] font-bold border-b border-border/60 text-center bg-muted/20">
+            <div className="grid grid-cols-6 text-[10px] font-bold border-b border-border/60 text-center bg-muted/20">
               <button
                 onClick={() => setActiveTab('layers')}
                 className={`py-2 border-b-2 transition-colors cursor-pointer ${
@@ -172,6 +188,16 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
                 }`}
               >
                 Światło
+              </button>
+              <button
+                onClick={() => setActiveTab('landmarks')}
+                className={`py-2 border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'landmarks'
+                    ? 'border-primary text-primary bg-primary/5'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Ikony 3D
               </button>
               <button
                 onClick={() => setActiveTab('commute')}
@@ -210,6 +236,21 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
               {/* TAB 1: WARSTWY GŁÓWNE */}
               {activeTab === 'layers' && (
                 <div className="space-y-2 text-xs">
+                  <label className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60 hover:bg-muted/70 cursor-pointer transition-colors">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-cyan-400" />
+                      <div>
+                        <span className="font-semibold text-foreground block">Landmarki 3D Szczecina</span>
+                        <span className="text-[10px] text-muted-foreground">Dźwigozaury, Hanza, Pazim, Zamek, Stadion</span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={state.showLandmarks3D !== false}
+                      onChange={() => toggleLayer('showLandmarks3D')}
+                      className="rounded accent-primary cursor-pointer w-4 h-4"
+                    />
+                  </label>
                   <label className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60 hover:bg-muted/70 cursor-pointer transition-colors">
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-blue-500" />
@@ -299,6 +340,22 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
+                      onClick={() => setSunlight('morning')}
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                        state.sunlightMode === 'morning'
+                          ? 'border-primary bg-primary/10 text-primary font-bold shadow-xs'
+                          : 'border-border hover:bg-muted/60 text-muted-foreground'
+                      }`}
+                    >
+                      <Sun className="w-4 h-4 text-amber-400" />
+                      <div>
+                        <span className="block font-bold">Poranek (06:30)</span>
+                        <span className="text-[10px] text-muted-foreground">Złote niskie cienie</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => setSunlight('day')}
                       className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
                         state.sunlightMode === 'day'
@@ -348,7 +405,7 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
                     <button
                       type="button"
                       onClick={() => setSunlight('night_cyberpunk')}
-                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                      className={`col-span-2 p-2.5 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
                         state.sunlightMode === 'night_cyberpunk'
                           ? 'border-primary bg-primary/10 text-primary font-bold shadow-xs'
                           : 'border-border hover:bg-muted/60 text-muted-foreground'
@@ -356,10 +413,42 @@ export const Map3DControlHub: React.FC<Map3DControlHubProps> = ({
                     >
                       <Moon className="w-4 h-4 text-cyan-400" />
                       <div>
-                        <span className="block font-bold">Nocny Neon</span>
-                        <span className="text-[10px] text-muted-foreground">Świecące wieże</span>
+                        <span className="block font-bold">Nocny Port & Neon 3D</span>
+                        <span className="text-[10px] text-muted-foreground">Iluminacja Floating Garden i wież</span>
                       </div>
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: SZCZECIN LANDMARKS 3D */}
+              {activeTab === 'landmarks' && (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    Ikoniczne obiekty architektoniczne i przemysłowe Szczecina w 3D:
+                  </p>
+                  <div className="space-y-1.5 max-h-[46vh] overflow-y-auto pr-1">
+                    {SZCZECIN_LANDMARKS_3D.map((lm) => (
+                      <button
+                        key={lm.id}
+                        type="button"
+                        onClick={() => handleSelectLandmark(lm)}
+                        className="w-full p-2.5 rounded-xl bg-muted/40 hover:bg-muted border border-border/60 text-left transition-all flex items-center justify-between group cursor-pointer"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm shrink-0">{lm.icon}</span>
+                            <span className="font-bold text-xs text-foreground truncate block">
+                              {lm.name}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground block truncate">
+                            📍 {lm.badge} • 📏 {lm.heightMeters} m
+                          </span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

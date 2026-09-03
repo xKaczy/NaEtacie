@@ -9,6 +9,7 @@ import { getAnnouncementExternalUrl, triggerHaptic } from '@/lib/utils';
 import { SearchAreaButton } from './SearchAreaButton';
 import { Map3DControlHub, Map3DState } from './Map3DControlHub';
 import { SZCZECIN_MEGA_PROJECTS, MegaConstructionProject } from '@/lib/geo/szczecinMegaProjects';
+import { SZCZECIN_LANDMARKS_3D, type SzczecinLandmark3D } from '@/lib/geo/szczecinLandmarks3D';
 import { generateSzczecinIsochrone, SZCZECIN_COMMUTE_BASES } from '@/lib/geo/isochroneCalculator';
 import { generateSalaryHexbinsGeoJSON } from '@/lib/geo/salaryHexbins';
 import { applySunlightToMap, SunlightMode } from '@/lib/geo/sunlightEngine';
@@ -16,6 +17,7 @@ import { buildAnnouncementsGeoJSON, CLUSTER_LAYER_CONFIG } from '@/lib/geo/mapCl
 import { buildDemandHeatmapGeoJSON, DEMAND_HEATMAP_LAYER_CONFIG } from '@/lib/geo/demandHeatmap';
 import { FloatingCameraControls } from './FloatingCameraControls';
 import { MegaProjectDetailModal } from './MegaProjectDetailModal';
+import { LandmarkDetailModal } from './LandmarkDetailModal';
 
 // Szczecin center coordinates [lng, lat]
 const SZCZECIN_CENTER: [number, number] = [14.5528, 53.4285];
@@ -68,6 +70,8 @@ export default function MapComponent({
   const [mapMoved, setMapMoved] = useState(false);
   const [isSatellite, setIsSatellite] = useState(false);
   const [selectedMegaProject, setSelectedMegaProject] = useState<MegaConstructionProject | null>(null);
+  const [selectedLandmark, setSelectedLandmark] = useState<SzczecinLandmark3D | null>(null);
+  const landmarkMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   // 3D Master State
   const [map3DState, setMap3DState] = useState<Map3DState>({
@@ -76,6 +80,8 @@ export default function MapComponent({
     showIsochrone: false,
     showSalaryPillars: false,
     showDemandHeatmap: false,
+    showLandmarks3D: true,
+    selectedLandmark: null,
     isDroneOrbiting: false,
     isochroneMinutes: 20,
     selectedBaseKey: 'centrum',
@@ -382,6 +388,49 @@ export default function MapComponent({
     });
   }, [map3DState.showConstructionSites]);
 
+  // Szczecin 3D Landmark Markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    landmarkMarkersRef.current.forEach((m) => m.remove());
+    landmarkMarkersRef.current = [];
+
+    if (map3DState.showLandmarks3D === false) return;
+
+    SZCZECIN_LANDMARKS_3D.forEach((lm) => {
+      const el = document.createElement('div');
+      el.className = 'szczecin-landmark-3d-node cursor-pointer select-none';
+      el.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div style="position:relative;padding:4px 8px;background:rgba(9,13,22,0.92);backdrop-filter:blur(8px);border:1.5px solid ${lm.lightColor};border-radius:999px;display:flex;align-items:center;gap:4px;box-shadow:0 0 14px ${lm.glowColor};">
+            <span style="font-size:13px;">${lm.icon}</span>
+            <span style="font-size:10px;font-weight:800;color:#ffffff;">${lm.name.split(' ')[0]}</span>
+            <span style="font-size:8px;font-weight:900;color:${lm.lightColor};background:rgba(255,255,255,0.1);padding:1px 3px;border-radius:3px;">${lm.heightMeters}m</span>
+          </div>
+          <div style="width:2px;height:10px;background:${lm.lightColor};box-shadow:0 0 6px ${lm.lightColor};"></div>
+        </div>
+      `;
+
+      el.addEventListener('click', () => {
+        triggerHaptic(12);
+        setSelectedLandmark(lm);
+        handleFlyTo(lm.coordinates[0], lm.coordinates[1], 16.2);
+      });
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat(lm.coordinates)
+        .addTo(map);
+
+      landmarkMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      landmarkMarkersRef.current.forEach((m) => m.remove());
+      landmarkMarkersRef.current = [];
+    };
+  }, [map3DState.showLandmarks3D]);
+
   // 360° Drone Cinematic Orbit Animation Loop
   useEffect(() => {
     const map = mapRef.current;
@@ -560,6 +609,7 @@ export default function MapComponent({
         onChange={setMap3DState}
         onFlyToCoordinates={handleFlyTo}
         onOpenProjectModal={setSelectedMegaProject}
+        onOpenLandmarkModal={setSelectedLandmark}
       />
 
       {/* Floating Quick Camera Controls Joystick */}
@@ -584,6 +634,17 @@ export default function MapComponent({
         project={selectedMegaProject}
         onClose={() => setSelectedMegaProject(null)}
         onFlyTo={handleFlyTo}
+      />
+
+      {/* 3D Szczecin Landmark Detail Modal */}
+      <LandmarkDetailModal
+        landmark={selectedLandmark}
+        onClose={() => setSelectedLandmark(null)}
+        onStartDroneOrbit={(lm) => {
+          handleFlyTo(lm.coordinates[0], lm.coordinates[1], 16.2);
+          setMap3DState((p) => ({ ...p, isDroneOrbiting: true }));
+        }}
+        isDroneOrbiting={map3DState.isDroneOrbiting}
       />
     </div>
   );

@@ -37,6 +37,9 @@ import { findNearestSupplier, SZCZECIN_CONSTRUCTION_SUPPLIERS, type Construction
 import { isJobWithinRadar, loadSavedHomeBase, saveHomeBase } from '@/lib/geo/homeBaseRadar';
 import { MapSuppliersModal } from './MapSuppliersModal';
 import { MapHomeRadarModal } from './MapHomeRadarModal';
+import { SZCZECIN_LANDMARKS_3D, type SzczecinLandmark3D } from '@/lib/geo/szczecinLandmarks3D';
+import { LandmarkDetailModal } from './LandmarkDetailModal';
+import { applySunlightToMap, type SunlightMode } from '@/lib/geo/sunlightEngine';
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -54,6 +57,7 @@ const mapboxToken =
 
 /** Vector style JSON configurations from CartoDB CDN and Mapbox */
 const MAP_STYLES: Record<MapStyleType, string> = {
+  'baltic-slate': 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
   emerald: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
   light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
@@ -160,7 +164,7 @@ function generateSpiderfyPositions(center: [number, number], count: number, zoom
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// MARKER SVG GENERATOR
+// HIGH-VIS TACTICAL JOB PILL GENERATOR (BALTIC SLATE HUD)
 // ═══════════════════════════════════════════════════════════════════
 
 function getMarkerHtml(
@@ -168,76 +172,79 @@ function getMarkerHtml(
   isFavorite: boolean,
   isSelected: boolean,
   dimmed: boolean = false,
-  price?: string | number | null
+  price?: string | number | null,
+  isUrgent: boolean = false,
+  isFresh: boolean = false
 ): string {
   const cat = CATEGORIES[normalizeCategory(category)];
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const scaleFactor = isMobile ? 0.67 : 1.0; // Scaled down by 1/3 (67% size) on mobile
-  const w = Math.round(34 * scaleFactor);
-  const h = Math.round(42 * scaleFactor);
-  const opacity = dimmed ? '0.35' : '1';
-  const scale = isSelected ? 'scale(1.22)' : 'scale(1)';
-  const glow = isSelected
-    ? `filter: drop-shadow(0 3px 10px ${cat.color}cc) drop-shadow(0 1px 2px rgba(0,0,0,0.4));`
-    : 'filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));';
-
   const shortPrice = price ? formatShortPrice(price) : null;
-  const priceFontSize = isMobile ? '8px' : '10px';
-  const pricePadding = isMobile ? '1px 5px' : '1.5px 7px';
-  const priceBottom = isMobile ? '-14px' : '-18px';
 
-  const numPrice = typeof price === 'number' ? price : (typeof price === 'string' ? parseFloat(price.replace(/[^\d.]/g, '')) : null);
-  const isHighPay = numPrice !== null && numPrice >= 10000;
+  const numPrice = typeof price === 'number'
+    ? price
+    : (typeof price === 'string' ? parseFloat(price.replace(/[^\d.]/g, '')) : null);
 
-  const badgeBg = isSelected
-    ? 'linear-gradient(135deg, #059669, #047857)'
+  // Hourly or monthly salary threshold against Szczecin median (45 zł/h or 7500 zł/mc)
+  const isHighPay = numPrice !== null && ((numPrice >= 45 && numPrice <= 300) || numPrice >= 7500);
+  const isMidPay = !isHighPay && numPrice !== null && ((numPrice >= 30 && numPrice < 45) || numPrice >= 5000);
+
+  // Tactical heat-bar colors
+  const heatColor = isUrgent ? '#ef4444' : isHighPay ? '#10b981' : isMidPay ? '#f59e0b' : '#64748b';
+  const borderColor = isSelected ? '#38bdf8' : isUrgent ? '#ef4444' : isHighPay ? '#10b981' : '#334155';
+  const glowShadow = isSelected
+    ? '0 0 16px rgba(56, 189, 248, 0.65), 0 4px 16px rgba(0,0,0,0.7)'
+    : isUrgent
+    ? '0 0 14px rgba(239, 68, 68, 0.55), 0 4px 14px rgba(0,0,0,0.6)'
     : isHighPay
-    ? 'linear-gradient(135deg, #10b981, #059669)'
-    : '#0f172a';
+    ? '0 0 12px rgba(16, 185, 129, 0.45), 0 4px 12px rgba(0,0,0,0.6)'
+    : '0 4px 12px rgba(0,0,0,0.5)';
 
-  const badgeBorder = isSelected || isHighPay ? '#34d399' : 'rgba(255,255,255,0.25)';
-  const badgeShadow = isHighPay
-    ? '0 2px 8px rgba(16,185,129,0.5), 0 0 10px rgba(16,185,129,0.3)'
-    : '0 2px 6px rgba(0,0,0,0.35)';
+  const opacity = dimmed ? '0.35' : '1';
+  const scale = isSelected ? 'scale(1.15)' : 'scale(1)';
 
-  const priceBadgeHtml = shortPrice
-    ? `<div style="position:absolute;bottom:${priceBottom};left:50%;transform:translateX(-50%);background:${badgeBg};color:#ffffff;font-size:${priceFontSize};font-weight:900;padding:${pricePadding};border-radius:10px;white-space:nowrap;box-shadow:${badgeShadow};border:1px solid ${badgeBorder};">${isHighPay ? '🔥 ' : ''}${shortPrice}</div>`
+  // Sonar Wave for fresh offers (<6h), urgent offers, or selected
+  const sonarRing = (isSelected || isFresh || isUrgent)
+    ? `<div class="sonar-wave-pulse" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${isMobile ? '38px' : '48px'};height:${isMobile ? '38px' : '48px'};border-radius:50%;background:${isUrgent ? 'rgba(239,68,68,0.25)' : isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(16,185,129,0.25)'};border:1.5px solid ${heatColor};animation:sonar-wave 2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;pointer-events:none;"></div>`
     : '';
 
-  const pulseSize = isMobile ? '30px' : '44px';
-  const pulseRing = isSelected
-    ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-65%);width:${pulseSize};height:${pulseSize};border-radius:50%;border:2px solid ${cat.color};animation:marker-pulse 1.5s cubic-bezier(0.4,0,0.6,1) infinite;pointer-events:none;"></div>`
+  // Top micro tag (CITO / TOP / NOWE)
+  const tagHtml = isUrgent
+    ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#dc2626;color:#ffffff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:4px;letter-spacing:0.04em;box-shadow:0 1px 4px rgba(220,38,38,0.6);white-space:nowrap;border:1px solid #f87171;z-index:3;">CITO</span>`
+    : isHighPay
+    ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#059669;color:#ffffff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:4px;letter-spacing:0.04em;box-shadow:0 1px 4px rgba(5,150,105,0.6);white-space:nowrap;border:1px solid #34d399;z-index:3;">TOP</span>`
+    : isFresh
+    ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#0284c7;color:#ffffff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:4px;letter-spacing:0.04em;box-shadow:0 1px 4px rgba(2,132,199,0.6);white-space:nowrap;border:1px solid #38bdf8;z-index:3;">NOWE</span>`
     : '';
 
-  const heartSize = isMobile ? '11px' : '15px';
-  const heartFontSize = isMobile ? '6px' : '8px';
+  // Heart badge for favorites
   const heartBadge = isFavorite
-    ? `<div style="position:absolute;top:-4px;right:-4px;width:${heartSize};height:${heartSize};background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;border:1.5px solid white;display:flex;align-items:center;justify-content:center;font-size:${heartFontSize};line-height:1;color:white;box-shadow:0 1px 4px rgba(239,68,68,0.6);">♥</div>`
+    ? `<div style="position:absolute;top:-4px;right:-5px;width:13px;height:13px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;border:1.5px solid white;display:flex;align-items:center;justify-content:center;font-size:7px;line-height:1;color:white;box-shadow:0 1px 4px rgba(239,68,68,0.6);z-index:4;">♥</div>`
     : '';
 
-  const gradId = `mg-${cat.color.replace('#','')}`;
-  const iconFontSize = isMobile ? '9' : '12';
+  const pillPad = isMobile ? '2px 7px 2px 4px' : '3px 9px 3px 5px';
+  const iconSize = isMobile ? '11px' : '13px';
+  const priceFontSize = isMobile ? '9.5px' : '11px';
 
   return `
-    <div style="position:relative;width:${w}px;height:${h}px;cursor:pointer;transform:${scale};transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1);opacity:${opacity};">
-      ${pulseRing}
-      <div style="${glow}">
-        <svg width="${w}" height="${h}" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <radialGradient id="${gradId}" cx="40%" cy="30%" r="70%">
-              <stop offset="0%" stop-color="${cat.color}" stop-opacity="1"/>
-              <stop offset="100%" stop-color="${cat.color}" stop-opacity="0.75"/>
-            </radialGradient>
-          </defs>
-          <path d="M17 0C7.611 0 0 7.611 0 17c0 12.625 17 25 17 25S34 29.625 34 17C34 7.611 26.389 0 17 0z"
-            fill="url(#${gradId})" stroke="white" stroke-width="2"
-          />
-          <circle cx="17" cy="16" r="10" fill="rgba(255,255,255,0.95)"/>
-          <text x="17" y="20.5" text-anchor="middle" font-size="${iconFontSize}" dominant-baseline="middle">${cat.icon}</text>
-        </svg>
-      </div>
-      ${priceBadgeHtml}
+    <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;user-select:none;transform:${scale};transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1);opacity:${opacity};">
+      ${sonarRing}
+      ${tagHtml}
       ${heartBadge}
+      
+      <!-- Tactical Job Pill Body -->
+      <div style="display:flex;align-items:center;gap:4.5px;background:rgba(9,13,22,0.92);backdrop-filter:blur(8px);border:1.5px solid ${borderColor};border-radius:999px;box-shadow:${glowShadow};padding:${pillPad};position:relative;z-index:2;">
+        <!-- Left Heat Bar -->
+        <div style="width:3.5px;height:12px;border-radius:2px;background:${heatColor};box-shadow:0 0 6px ${heatColor};shrink:0;"></div>
+        
+        <!-- Category Icon -->
+        <span style="font-size:${iconSize};line-height:1;display:flex;align-items:center;">${cat.icon}</span>
+        
+        <!-- Price Label -->
+        <span style="font-size:${priceFontSize};font-weight:800;color:#f8fafc;letter-spacing:-0.02em;white-space:nowrap;">${shortPrice || 'Wycena'}</span>
+      </div>
+
+      <!-- Downward Pointing Tactical Needle -->
+      <div style="width:0;height:0;border-left:4.5px solid transparent;border-right:4.5px solid transparent;border-top:5.5px solid ${borderColor};margin-top:-1px;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.5));position:relative;z-index:1;"></div>
     </div>
   `;
 }
@@ -857,6 +864,13 @@ export default function MapView({
   });
   const supplierMarkersRef = useRef<maplibregl.Marker[]>([]);
   const homeBaseMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const [selectedLandmark, setSelectedLandmark] = useState<SzczecinLandmark3D | null>(null);
+  const [showLandmarks3D, setShowLandmarks3D] = useState(true);
+  const [isDroneOrbiting, setIsDroneOrbiting] = useState(false);
+  const [sunlightMode, setSunlightMode] = useState<SunlightMode>('auto');
+  const [cameraPitchMode, setCameraPitchMode] = useState<'flat' | 'cinematic'>('cinematic');
+  const landmarkMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const droneOrbitAnimRef = useRef<number | null>(null);
 
   const handleNearMeClick = useCallback(() => {
     triggerHaptic(12);
@@ -1061,14 +1075,23 @@ export default function MapView({
 
       // ─── STYLE LOAD HANDLER ──────────────────────────────────────────
       map.on('style.load', () => {
+        if (!map) return;
         if (styleLoadTimer) { clearTimeout(styleLoadTimer); styleLoadTimer = null; }
         setMapLoaded(true);
         setTilesLoading(false);
 
         const dark = isDarkRef.current;
 
+        if (mapStyle === 'baltic-slate') {
+          try {
+            if (map.getLayer('water')) {
+              map.setPaintProperty('water', 'fill-color', '#0369a1');
+            }
+          } catch { /* non-fatal */ }
+        }
+        applySunlightToMap(map, sunlightMode);
+
         // ─── 1. WEBGL 3D BUILDINGS LAYER ──────────────────────────────
-        if (!map) return;
         const layers = map.getStyle().layers;
         const labelLayerId = layers?.find(layer => layer.type === 'symbol' && layer.layout?.['text-field'])?.id;
 
@@ -1312,6 +1335,12 @@ export default function MapView({
       }
       spiderMarkersRef.current.forEach(m => m.remove());
       spiderMarkersRef.current = [];
+      landmarkMarkersRef.current.forEach(m => m.remove());
+      landmarkMarkersRef.current = [];
+      if (droneOrbitAnimRef.current) {
+        cancelAnimationFrame(droneOrbitAnimRef.current);
+        droneOrbitAnimRef.current = null;
+      }
 
       setMapLoaded(false);
       
@@ -1643,6 +1672,110 @@ export default function MapView({
     };
   }, [showSuppliersModal, mapLoaded]);
 
+  // ─── 3D SZCZECIN LANDMARK BEACONS ────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    landmarkMarkersRef.current.forEach((m) => m.remove());
+    landmarkMarkersRef.current = [];
+
+    if (!showLandmarks3D) return;
+
+    SZCZECIN_LANDMARKS_3D.forEach((lm) => {
+      const el = document.createElement('div');
+      el.className = 'szczecin-3d-landmark-marker';
+      el.style.cursor = 'pointer';
+      el.style.userSelect = 'none';
+
+      el.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-6px);transition:transform 0.2s ease;">
+          <div style="position:relative;">
+            <!-- Pulsing Beacon Halo -->
+            <div style="position:absolute;inset:-6px;border-radius:50%;background:${lm.glowColor};animation:marker-pulse 2.2s infinite;filter:blur(3px);pointer-events:none;"></div>
+            
+            <!-- Beacon Badge Capsule -->
+            <div style="position:relative;padding:4px 8px;background:rgba(9,13,22,0.92);backdrop-filter:blur(10px);border:1.5px solid ${lm.lightColor};border-radius:999px;display:flex;align-items:center;gap:5px;box-shadow:0 4px 16px rgba(0,0,0,0.6), 0 0 12px ${lm.glowColor};">
+              <span style="font-size:13px;line-height:1;">${lm.icon}</span>
+              <span style="font-size:10.5px;font-weight:800;color:#ffffff;white-space:nowrap;">${lm.name.split(' ')[0]}</span>
+              <span style="font-size:8px;font-weight:900;color:${lm.lightColor};background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:4px;line-height:1;">${lm.heightMeters}m</span>
+            </div>
+          </div>
+          
+          <!-- Downward Needle Beam -->
+          <div style="width:2px;height:10px;background:linear-gradient(to bottom, ${lm.lightColor}, transparent);box-shadow:0 0 6px ${lm.lightColor};"></div>
+        </div>
+      `;
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerHaptic(12);
+        setSelectedLandmark(lm);
+        map.flyTo({
+          center: lm.coordinates,
+          zoom: 16.2,
+          pitch: 58,
+          bearing: -22,
+          essential: true,
+          duration: prefersReducedMotion ? 0 : 1500,
+        });
+      });
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat(lm.coordinates)
+        .addTo(map);
+
+      landmarkMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      landmarkMarkersRef.current.forEach((m) => m.remove());
+      landmarkMarkersRef.current = [];
+    };
+  }, [showLandmarks3D, mapLoaded, prefersReducedMotion]);
+
+  // ─── 360° DRONE ORBIT ENGINE ─────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isDroneOrbiting) {
+      if (droneOrbitAnimRef.current) {
+        cancelAnimationFrame(droneOrbitAnimRef.current);
+        droneOrbitAnimRef.current = null;
+      }
+      return;
+    }
+
+    let lastTimestamp = performance.now();
+    const orbitSpeedDegPerSec = 10; // Smooth 10°/sec rotation
+
+    const orbitFrame = (timestamp: number) => {
+      const elapsedSec = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+
+      if (map) {
+        const newBearing = (map.getBearing() + orbitSpeedDegPerSec * elapsedSec) % 360;
+        map.setBearing(newBearing);
+      }
+      droneOrbitAnimRef.current = requestAnimationFrame(orbitFrame);
+    };
+
+    droneOrbitAnimRef.current = requestAnimationFrame(orbitFrame);
+
+    return () => {
+      if (droneOrbitAnimRef.current) {
+        cancelAnimationFrame(droneOrbitAnimRef.current);
+        droneOrbitAnimRef.current = null;
+      }
+    };
+  }, [isDroneOrbiting]);
+
+  // ─── DYNAMIC 3D SUNLIGHT & ATMOSPHERE SYNC ────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    applySunlightToMap(map, sunlightMode);
+  }, [sunlightMode, mapLoaded]);
+
   // Open Popup function
   const openPopup = useCallback((ad: DisplayAnnouncement, coordinates: [number, number]) => {
     const map = mapRef.current;
@@ -1762,6 +1895,8 @@ export default function MapView({
 
         const isFav = isFavorite(ad.id);
         const isSelected = ad.id === selectedId;
+        const isUrgent = /cito|piln|od zaraz|natychmiast/i.test(ad.title || '');
+        const isFresh = ad.scraped_at ? (Date.now() - new Date(ad.scraped_at).getTime() < 6 * 3600 * 1000) : false;
 
         let marker = markersRef.current.get(ad.id);
 
@@ -1769,7 +1904,7 @@ export default function MapView({
           const el = document.createElement('div');
           el.className = 'job-marker';
           el.style.display = showHeatmap ? 'none' : 'block';
-          el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price);
+          el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price, isUrgent, isFresh);
 
           marker = new maplibregl.Marker({ element: el })
             .setLngLat(targetCoords)
@@ -1786,7 +1921,7 @@ export default function MapView({
         } else {
           const el = marker.getElement();
           if (el) {
-            el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price);
+            el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price, isUrgent, isFresh);
             el.style.display = showHeatmap ? 'none' : 'block';
           }
           marker.setLngLat(targetCoords);
@@ -1831,6 +1966,8 @@ export default function MapView({
     map.flyTo({
       center: coordinates,
       zoom: Math.max(map.getZoom(), FLY_TO_ZOOM),
+      pitch: 52,
+      bearing: -15,
       padding: { top: 60, bottom: bottomPadding, left: 0, right: 0 },
       essential: true,
       duration: prefersReducedMotion ? 0 : 1200,
@@ -1855,6 +1992,8 @@ export default function MapView({
       mapRef.current.flyTo({
         center: [position[1], position[0]],
         zoom: Math.max(mapRef.current.getZoom(), FLY_TO_ZOOM),
+        pitch: 52,
+        bearing: -15,
         padding: { top: 60, bottom: bottomPadding, left: 0, right: 0 },
         essential: true,
         duration: prefersReducedMotion ? 0 : 1000,
@@ -2385,6 +2524,48 @@ export default function MapView({
                   </span>
                   <span className={`w-2 h-2 rounded-full ${isRadarActive ? 'bg-teal-400 animate-pulse' : 'bg-zinc-600'}`} />
                 </button>
+
+                {/* ⚓ Landmarki 3D Szczecina */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic(10);
+                    setShowLandmarks3D(!showLandmarks3D);
+                  }}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-semibold border ${
+                    showLandmarks3D
+                      ? 'bg-teal-500/20 text-teal-300 border-teal-500/50 shadow-sm'
+                      : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-base">⚓</span>
+                    <span>Landmarki 3D Szczecina</span>
+                  </span>
+                  <span className={`w-2 h-2 rounded-full ${showLandmarks3D ? 'bg-teal-400 animate-pulse' : 'bg-zinc-600'}`} />
+                </button>
+
+                {/* 🛸 Przelot Drona 360° */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic(12);
+                    setIsDroneOrbiting(!isDroneOrbiting);
+                  }}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-semibold border ${
+                    isDroneOrbiting
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm'
+                      : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-base">🛸</span>
+                    <span>Przelot Drona 360°</span>
+                  </span>
+                  <span className={`w-2 h-2 rounded-full ${isDroneOrbiting ? 'bg-rose-400 animate-pulse' : 'bg-zinc-600'}`} />
+                </button>
               </div>
             </div>
           </div>
@@ -2553,6 +2734,124 @@ export default function MapView({
         />
       )}
 
+      {/* 🏛️ Szczecin 3D Landmark Detail Modal */}
+      <LandmarkDetailModal
+        landmark={selectedLandmark}
+        onClose={() => setSelectedLandmark(null)}
+        onStartDroneOrbit={(lm) => {
+          mapRef.current?.flyTo({
+            center: lm.coordinates,
+            zoom: 16.2,
+            pitch: 58,
+            bearing: -22,
+            essential: true,
+            duration: 1200,
+          });
+          setIsDroneOrbiting((prev) => !prev);
+        }}
+        isDroneOrbiting={isDroneOrbiting}
+        onFilterNearbyJobs={(lm) => {
+          mapRef.current?.flyTo({
+            center: lm.coordinates,
+            zoom: 15,
+            pitch: 45,
+          });
+        }}
+      />
+
+      {/* 🧭 Tactical HUD Camera & 3D Environment Control Bar */}
+      <div className="absolute bottom-[92px] md:bottom-8 right-3 z-20 flex flex-col items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-950/85 backdrop-blur-xl border border-zinc-800 text-zinc-100 shadow-2xl select-none">
+        {/* Pitch 2D / 2.5D toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            const map = mapRef.current;
+            if (!map) return;
+            if (cameraPitchMode === 'flat') {
+              setCameraPitchMode('cinematic');
+              map.easeTo({ pitch: 52, bearing: -15, duration: 900 });
+            } else {
+              setCameraPitchMode('flat');
+              map.easeTo({ pitch: 0, bearing: 0, duration: 900 });
+            }
+          }}
+          className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            cameraPitchMode === 'cinematic' ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-zinc-800 text-zinc-300'
+          }`}
+          title={cameraPitchMode === 'cinematic' ? 'Przełącz na widok 2D z góry (0°)' : 'Włącz widok kinowy 2.5D (52°)'}
+          aria-label="Kąt kamery 3D"
+        >
+          <span className="text-xs font-mono font-black">{cameraPitchMode === 'cinematic' ? '3D' : '2D'}</span>
+        </button>
+
+        {/* Reset North Compass */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            mapRef.current?.easeTo({ bearing: 0, duration: 600 });
+          }}
+          className="p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-cyan-400 transition-all cursor-pointer"
+          title="Zorientuj na Północ"
+          aria-label="Północ"
+        >
+          <span className="text-sm">🧭</span>
+        </button>
+
+        {/* 360° Drone Orbit */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(12);
+            setIsDroneOrbiting((p) => !p);
+          }}
+          className={`p-2 rounded-xl transition-all cursor-pointer ${
+            isDroneOrbiting ? 'bg-rose-600 text-white animate-pulse shadow-md' : 'hover:bg-zinc-800 text-zinc-300'
+          }`}
+          title={isDroneOrbiting ? 'Zatrzymaj przelot drona' : 'Uruchom kinowy obieg dronem 360°'}
+          aria-label="Obieg dronem 360°"
+        >
+          <span className="text-sm">🛸</span>
+        </button>
+
+        {/* Sunlight Cycler */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            setSunlightMode((prev) => {
+              const modes: SunlightMode[] = ['day', 'morning', 'golden_hour', 'sunset', 'night_cyberpunk'];
+              const curIdx = modes.indexOf(prev);
+              return modes[(curIdx + 1) % modes.length];
+            });
+          }}
+          className="p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-amber-400 transition-all cursor-pointer"
+          title={`Oświetlenie 3D: ${sunlightMode}`}
+          aria-label="Oświetlenie 3D"
+        >
+          <span className="text-sm">
+            {sunlightMode === 'night_cyberpunk' ? '🌃' : sunlightMode === 'sunset' ? '🌆' : sunlightMode === 'golden_hour' ? '🌅' : sunlightMode === 'morning' ? '☕' : '☀️'}
+          </span>
+        </button>
+
+        {/* 3D Landmarks Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            setShowLandmarks3D((p) => !p);
+          }}
+          className={`p-2 rounded-xl transition-all cursor-pointer ${
+            showLandmarks3D ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'hover:bg-zinc-800 text-zinc-500'
+          }`}
+          title={showLandmarks3D ? 'Ukryj ikony 3D Szczecina' : 'Pokaż ikony 3D Szczecina'}
+          aria-label="Landmarki 3D"
+        >
+          <span className="text-sm">⚓</span>
+        </button>
+      </div>
+
       {/* "Search in this area" button */}
       <SearchAreaButton
         visible={Boolean(onSearchArea && moved)}
@@ -2690,6 +2989,22 @@ export default function MapView({
           }
           100% {
             transform: translate(-50%, -65%) scale(1.5);
+            opacity: 0;
+          }
+        }
+
+        /* High-Vis Sonar Wave Radar animation for fresh/urgent/selected pins */
+        @keyframes sonar-wave {
+          0% {
+            transform: translate(-50%, -50%) scale(0.65);
+            opacity: 0.9;
+          }
+          60% {
+            transform: translate(-50%, -50%) scale(2.0);
+            opacity: 0.2;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(2.6);
             opacity: 0;
           }
         }

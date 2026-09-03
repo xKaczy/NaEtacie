@@ -28,6 +28,7 @@ import { generateApplicationMessageDraft } from '@/lib/contact/draftGenerator';
 import { EmployerTrustBadge } from '@/components/safety/EmployerTrustBadge';
 import { evaluateEmployerTrust } from '@/lib/safety/employerTrustEvaluator';
 import { getQuickSmsHref, getZditmTransitUrl } from '@/lib/geo/transitRouting';
+import { findNearestSupplier } from '@/lib/geo/szczecinSuppliers';
 
 export interface MobileBottomSheetProps {
   ads: DisplayAnnouncement[];
@@ -264,6 +265,28 @@ export function MobileBottomSheet({
                 )}
               </div>
             )}
+
+            {/* Nearest Supplier Badge */}
+            {(() => {
+              const nearest = findNearestSupplier(currentDisplayAd.latitude, currentDisplayAd.longitude);
+              if (!nearest) return null;
+              return (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${nearest.supplier.lat},${nearest.supplier.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-bold hover:bg-amber-500/20 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <span className="text-sm">🏪</span>
+                    <span className="truncate">Zaopatrzenie: <strong>{nearest.supplier.name}</strong></span>
+                  </span>
+                  <span className="text-amber-400 shrink-0 font-mono text-[10px] bg-amber-950/60 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                    {nearest.distanceKm} km (~{nearest.driveTimeMinutes}m)
+                  </span>
+                </a>
+              );
+            })()}
 
             {/* ── 1-Tap Thumb Zone Action Buttons (Min 44px Height for Work Gloves) ── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">

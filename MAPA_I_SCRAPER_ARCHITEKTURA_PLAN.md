@@ -215,6 +215,16 @@ Interfejs zoptymalizowano pod kątem maksymalnej czytelności na ekranach OLED i
 - [x] **Strefa Przygraniczna Niemcy (DE / EUR)**: Filtr „Przygranicze DE (€)”, katalog miast przygranicznych (Löcknitz, Pasewalk, Schwedt) i przelicznik EUR/PLN (`lib/geo/germanBorderZone.ts`, `QuickFilterBar.tsx`).
 - [ ] **Klucz Produkcyjny Firebase lub Fallback DB**: Zabezpieczenie ciągłego zapisu ofert ze scrapera w chmurze bez fallbacku na seed.
 
+### Etap 7: GIS Pro – Hurtownie Budowlane & Radar Bazy Domowej (Wdrożone)
+- [x] **Hurtownie & Markety Budowlane Szczecina**:
+  - Katalog kluczowych punktów zaopatrzenia: Castorama (Południowa / Ku Słońcu), Leroy Merlin (Golisza / Ustowo), Bricoman (Białowieska), PSB Mrówka, Bims Plus, Kopel, Marlin (`lib/geo/szczecinSuppliers.ts`).
+  - Dedykowany modal i warstwa na mapie: godziny otwarcia, adres, 1-klik nawigacja Google Maps i telefon do hurtowni (`components/map/MapSuppliersModal.tsx`).
+  - Automatyczne wyliczanie najbliższego marketu w karcie oferty (odległość km i czas dojazdu w `MapView.tsx` i `MobileBottomSheet.tsx`).
+- [x] **Interaktywna Baza Domowa & Radar Dojazdu (5–30 km)**:
+  - Przeciągalna pinezka bazy 🏠 z persystencją w `localStorage` (`lib/geo/homeBaseRadar.ts`).
+  - Dynamiczny, półprzezroczysty poligon radaru na mapie WebGL z suwakiem promienia (5, 10, 15, 20, 25 km) i szybkimi presetami (`components/map/MapHomeRadarModal.tsx`).
+  - Pływający badge liczby zleceń w zasięgu radaru oraz automatyczne filtrowanie ofert na mapie w czasie rzeczywistym.
+
 ---
 
 ## 6. Strategiczna Diagnoza Potrzeb Aplikacji (Analiza Lead Architekta)

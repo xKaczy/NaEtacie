@@ -33,6 +33,10 @@ import { MapConstructionSites } from './MapConstructionSites';
 import { MapTransitStops } from './MapTransitStops';
 import { MapPogonSzczecin, POGON_STADIUM_COORDS } from './MapPogonSzczecin';
 import { getQuickSmsHref, getZditmTransitUrl } from '@/lib/geo/transitRouting';
+import { findNearestSupplier, SZCZECIN_CONSTRUCTION_SUPPLIERS, type ConstructionSupplier } from '@/lib/geo/szczecinSuppliers';
+import { isJobWithinRadar, loadSavedHomeBase, saveHomeBase } from '@/lib/geo/homeBaseRadar';
+import { MapSuppliersModal } from './MapSuppliersModal';
+import { MapHomeRadarModal } from './MapHomeRadarModal';
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -445,6 +449,7 @@ function MarkerPopup({
   }, [homeLat, homeLng, ad.latitude, ad.longitude]);
 
   const estDriveMin = distKm != null ? Math.max(2, Math.round((distKm / 35) * 60)) : null;
+  const nearestSupplier = findNearestSupplier(ad.latitude, ad.longitude);
 
   const bg = isDark ? '#09090b' : '#ffffff';
   const textPrimary = isDark ? '#f4f4f5' : '#111827';
@@ -538,6 +543,24 @@ function MarkerPopup({
             }}>
               <span>💰</span> {priceDisplay}
             </span>
+          )}
+          {nearestSupplier && (
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${nearestSupplier.supplier.lat},${nearestSupplier.supplier.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Nawiguj do marketu budowlanego: ${nearestSupplier.supplier.name} (${nearestSupplier.supplier.address})`}
+              style={{
+                fontSize: '10px', background: isDark ? 'rgba(245,158,11,0.18)' : '#fef3c7',
+                color: isDark ? '#fbbf24' : '#b45309',
+                border: `1px solid ${isDark ? 'rgba(245,158,11,0.35)' : '#fde68a'}`,
+                padding: '3px 8px', borderRadius: '999px', fontWeight: 700,
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                textDecoration: 'none',
+              }}
+            >
+              <span>🏪</span> {nearestSupplier.supplier.name} ({nearestSupplier.distanceKm} km • ~{nearestSupplier.driveTimeMinutes}m)
+            </a>
           )}
         </div>
 
@@ -823,6 +846,17 @@ export default function MapView({
   const [showIsochroneModal, setShowIsochroneModal] = useState(false);
   const [showGeoAlertModal, setShowGeoAlertModal] = useState(false);
   const [isLassoDrawing, setIsLassoDrawing] = useState(false);
+  const [showSuppliersModal, setShowSuppliersModal] = useState(false);
+  const [showHomeRadarModal, setShowHomeRadarModal] = useState(false);
+  const [isRadarActive, setIsRadarActive] = useState(false);
+  const [radarRadiusKm, setRadarRadiusKm] = useState(10);
+  const [isPickingHomeOnMap, setIsPickingHomeOnMap] = useState(false);
+  const [homeBaseCoords, setHomeBaseCoords] = useState<[number, number] | null>(() => {
+    const saved = loadSavedHomeBase();
+    return saved ? saved.coords : [14.5528, 53.4285];
+  });
+  const supplierMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const homeBaseMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   const handleNearMeClick = useCallback(() => {
     triggerHaptic(12);
@@ -866,8 +900,11 @@ export default function MapView({
     if (isochronePolygon && isochronePolygon.length >= 3) {
       base = base.filter((ad) => isPointInPolygon([ad.latitude!, ad.longitude!], isochronePolygon));
     }
+    if (isRadarActive && homeBaseCoords) {
+      base = base.filter((ad) => isJobWithinRadar(ad.latitude, ad.longitude, homeBaseCoords, radarRadiusKm));
+    }
     return base;
-  }, [visibleAds, quickFilter, lassoPolygon, isochronePolygon]);
+  }, [visibleAds, quickFilter, lassoPolygon, isochronePolygon, isRadarActive, homeBaseCoords, radarRadiusKm]);
 
   // Detect app-level dark mode
   useEffect(() => {
@@ -1455,6 +1492,156 @@ export default function MapView({
 
     homeMarkerRef.current = homeMarker;
   }, [homeLat, homeLng, maxDistanceKm, mapLoaded]);
+
+  // Map click listener for picking Home Base location
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded || !isPickingHomeOnMap) return;
+
+    map.getCanvas().style.cursor = 'crosshair';
+
+    const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+      const coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      setHomeBaseCoords(coords);
+      saveHomeBase(coords, radarRadiusKm);
+      setIsPickingHomeOnMap(false);
+      setIsRadarActive(true);
+      setShowHomeRadarModal(true);
+      map.getCanvas().style.cursor = '';
+      triggerHaptic(20);
+    };
+
+    map.once('click', handleMapClick);
+
+    return () => {
+      if (map) {
+        map.off('click', handleMapClick);
+        map.getCanvas().style.cursor = '';
+      }
+    };
+  }, [isPickingHomeOnMap, mapLoaded, radarRadiusKm]);
+
+  // Home Base Radar Polygon & Draggable Marker
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    const sourceId = 'home-radar-source';
+    const fillLayerId = 'home-radar-fill';
+    const lineLayerId = 'home-radar-line';
+
+    if (homeBaseMarkerRef.current) {
+      homeBaseMarkerRef.current.remove();
+      homeBaseMarkerRef.current = null;
+    }
+
+    if (!isRadarActive || !homeBaseCoords) {
+      if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
+      if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      return;
+    }
+
+    const circleGeoJson = createGeoJsonCircle(homeBaseCoords, radarRadiusKm);
+
+    if (map.getSource(sourceId)) {
+      (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(circleGeoJson);
+    } else {
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: circleGeoJson,
+      });
+
+      map.addLayer({
+        id: fillLayerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': '#0d9488',
+          'fill-opacity': 0.1,
+        },
+      });
+
+      map.addLayer({
+        id: lineLayerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#14b8a6',
+          'line-width': 2.5,
+          'line-dasharray': [4, 3],
+        },
+      });
+    }
+
+    // Draggable Home Base Marker
+    const el = document.createElement('div');
+    el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 4px 10px rgba(13,148,136,0.6));">
+        <div style="padding:5px 9px;background:#0d9488;color:#ffffff;border:2px solid #ffffff;border-radius:999px;font-size:11px;font-weight:900;display:flex;align-items:center;gap:4px;">
+          <span>🏠</span> Baza (${radarRadiusKm} km)
+        </div>
+        <div style="width:2px;height:10px;background:#0d9488;"></div>
+      </div>
+    `;
+
+    const marker = new maplibregl.Marker({ element: el, draggable: true })
+      .setLngLat(homeBaseCoords)
+      .addTo(map);
+
+    marker.on('dragend', () => {
+      const lngLat = marker.getLngLat();
+      const newCoords: [number, number] = [lngLat.lng, lngLat.lat];
+      setHomeBaseCoords(newCoords);
+      saveHomeBase(newCoords, radarRadiusKm);
+      triggerHaptic(15);
+    });
+
+    homeBaseMarkerRef.current = marker;
+
+    return () => {
+      if (homeBaseMarkerRef.current) {
+        homeBaseMarkerRef.current.remove();
+        homeBaseMarkerRef.current = null;
+      }
+    };
+  }, [isRadarActive, homeBaseCoords, radarRadiusKm, mapLoaded]);
+
+  // Suppliers Pins on Map
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    supplierMarkersRef.current.forEach((m) => m.remove());
+    supplierMarkersRef.current = [];
+
+    if (!showSuppliersModal) return;
+
+    SZCZECIN_CONSTRUCTION_SUPPLIERS.forEach((s) => {
+      const el = document.createElement('div');
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;background:#18181b;color:#f59e0b;border:1.5px solid #f59e0b;border-radius:12px;font-size:11px;font-weight:800;box-shadow:0 4px 12px rgba(0,0,0,0.5);cursor:pointer;transform:translate(-50%, -50%);">
+          <span>🏪</span>
+          <span>${s.name.split(' ')[0]}</span>
+        </div>
+      `;
+      el.onclick = () => {
+        triggerHaptic(10);
+        map.flyTo({ center: [s.lng, s.lat], zoom: 15 });
+      };
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([s.lng, s.lat])
+        .addTo(map);
+
+      supplierMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      supplierMarkersRef.current.forEach((m) => m.remove());
+      supplierMarkersRef.current = [];
+    };
+  }, [showSuppliersModal, mapLoaded]);
 
   // Open Popup function
   const openPopup = useCallback((ad: DisplayAnnouncement, coordinates: [number, number]) => {
@@ -2156,6 +2343,48 @@ export default function MapView({
                   </span>
                   <span className={`w-2 h-2 rounded-full ${showGeoAlertModal ? 'bg-purple-400 animate-pulse' : 'bg-zinc-600'}`} />
                 </button>
+
+                {/* Zaopatrzenie & Markety Budowlane */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic(10);
+                    setShowSuppliersModal(!showSuppliersModal);
+                  }}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-semibold border ${
+                    showSuppliersModal
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                      : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-base">🏪</span>
+                    <span>Hurtownie & Markety</span>
+                  </span>
+                  <span className={`w-2 h-2 rounded-full ${showSuppliersModal ? 'bg-amber-400 animate-pulse' : 'bg-zinc-600'}`} />
+                </button>
+
+                {/* Baza Sprzętowa / Radar */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    triggerHaptic(10);
+                    setShowHomeRadarModal(!showHomeRadarModal);
+                  }}
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer text-xs font-semibold border ${
+                    isRadarActive || showHomeRadarModal
+                      ? 'bg-teal-500/20 text-teal-300 border-teal-500/50 shadow-sm'
+                      : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-base">🏠</span>
+                    <span>Baza Domowa (Radar {radarRadiusKm}km)</span>
+                  </span>
+                  <span className={`w-2 h-2 rounded-full ${isRadarActive ? 'bg-teal-400 animate-pulse' : 'bg-zinc-600'}`} />
+                </button>
               </div>
             </div>
           </div>
@@ -2182,6 +2411,47 @@ export default function MapView({
         }}
       />
 
+      {/* 🏪 Construction Suppliers Modal */}
+      <MapSuppliersModal
+        isVisible={showSuppliersModal}
+        onClose={() => setShowSuppliersModal(false)}
+        onFlyToSupplier={(supplier) => {
+          mapRef.current?.flyTo({ center: [supplier.lng, supplier.lat], zoom: 15 });
+        }}
+      />
+
+      {/* 🏠 Home Base Radar Modal */}
+      <MapHomeRadarModal
+        isVisible={showHomeRadarModal}
+        onClose={() => setShowHomeRadarModal(false)}
+        homeBaseCoords={homeBaseCoords}
+        radarRadiusKm={radarRadiusKm}
+        isRadarActive={isRadarActive}
+        onSetRadarActive={(active) => {
+          setIsRadarActive(active);
+          triggerHaptic(15);
+        }}
+        onUpdateRadiusKm={(km) => {
+          setRadarRadiusKm(km);
+          if (homeBaseCoords) saveHomeBase(homeBaseCoords, km);
+        }}
+        onPickHomeOnMap={() => {
+          setIsPickingHomeOnMap(true);
+          setShowHomeRadarModal(false);
+        }}
+        onUseCurrentGps={() => {
+          if (!navigator.geolocation) return;
+          navigator.geolocation.getCurrentPosition((pos) => {
+            const coords: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+            setHomeBaseCoords(coords);
+            saveHomeBase(coords, radarRadiusKm);
+            setIsRadarActive(true);
+            mapRef.current?.flyTo({ center: coords, zoom: 13 });
+          });
+        }}
+        matchingOffersCount={geocodedAds.length}
+      />
+
       {/* Live Construction Weather Widget */}
       <MapWeatherWidget ui={ui} isDark={isDark} />
 
@@ -2191,6 +2461,21 @@ export default function MapView({
         <span className="text-zinc-400">Aktualizacja:</span>
         <span className="text-emerald-400 font-semibold">przed chwilą</span>
       </div>
+
+      {/* 🏠 Active Radar Floating Badge */}
+      {isRadarActive && (
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            setShowHomeRadarModal(true);
+          }}
+          className="absolute top-24 right-3 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-teal-950/90 backdrop-blur-xl border border-teal-500/50 text-[11px] font-bold text-teal-300 shadow-xl cursor-pointer hover:bg-teal-900 transition-colors"
+        >
+          <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+          <span>Radar: {radarRadiusKm} km ({geocodedAds.length} ofert)</span>
+        </button>
+      )}
 
       {/* Custom Lasso Polygon Drawing Tool */}
       <MapLassoDraw

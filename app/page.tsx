@@ -325,6 +325,14 @@ function AnnouncementCard({
                           {ad.employment_type}
                         </span>
                       )}
+                      {(() => {
+                        const is24h = ad.posted_days_ago === 0 || (ad.scraped_at && (Date.now() - new Date(ad.scraped_at).getTime()) < 24 * 3600 * 1000);
+                        return is24h ? (
+                          <span className="text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-2xs">
+                            <Sparkles className="w-2.5 h-2.5 animate-pulse" /> NOWE 24H
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -335,18 +343,34 @@ function AnnouncementCard({
                         description={ad.description}
                       />
                       {ad.phone && (
-                        <a
-                          href={`tel:${ad.phone.replace(/\s+/g, '')}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            triggerHaptic(15);
-                          }}
-                          className="shrink-0 p-1.5 rounded-full text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 hover:scale-110 transition-transform cursor-pointer"
-                          title={`Zadzwoń do majstra: ${ad.phone}`}
-                          aria-label={`Zadzwoń do majstra: ${ad.phone}`}
-                        >
-                          <Phone className="w-4 h-4 fill-current" />
-                        </a>
+                        <div className="flex items-center gap-1">
+                          <a
+                            href={`tel:${ad.phone.replace(/\s+/g, '')}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerHaptic(15);
+                            }}
+                            className="shrink-0 p-1.5 rounded-full text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 hover:scale-110 transition-transform cursor-pointer"
+                            title={`Zadzwoń: ${ad.phone}`}
+                            aria-label={`Zadzwoń do majstra: ${ad.phone}`}
+                          >
+                            <Phone className="w-4 h-4 fill-current" />
+                          </a>
+                          <a
+                            href={`sms:${ad.phone.replace(/\s+/g, '')}?body=${encodeURIComponent(
+                              `Dzień dobry! Piszę w sprawie ogłoszenia: "${ad.title.slice(0, 45)}" z serwisu NaEtacie. Jestem zainteresowany i dyspozycyjny od zaraz. Proszę o kontakt.`
+                            )}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerHaptic(15);
+                            }}
+                            className="shrink-0 p-1.5 rounded-full text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:scale-110 transition-transform cursor-pointer"
+                            title={`Napisz SMS: ${ad.phone}`}
+                            aria-label="Napisz szybki SMS ze zgłoszeniem"
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </a>
+                        </div>
                       )}
                       {onQuickView && (
                         <button
@@ -507,9 +531,14 @@ function AnnouncementCard({
                           ~{netBreakdown.uopNet.toLocaleString('pl-PL')} zł na rękę (UoP)
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground pt-1 border-t border-emerald-500/20">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-muted-foreground pt-1 border-t border-emerald-500/20">
                         <div>Umowa Zlecenie: <strong>~{netBreakdown.uzNet.toLocaleString('pl-PL')} zł</strong></div>
                         <div>UZ Student (&lt;26): <strong>{netBreakdown.uzStudentNet.toLocaleString('pl-PL')} zł</strong></div>
+                        <div>B2B na rękę (ryczałt 8.5%): <strong>~{Math.round(typeof ad.price === 'number' ? ad.price * 0.82 : 0).toLocaleString('pl-PL')} zł</strong></div>
+                      </div>
+                      <div className="text-[10px] text-emerald-700 dark:text-emerald-300/80 bg-emerald-500/10 px-2 py-1 rounded-md flex items-center justify-between">
+                        <span>🚗 Szacunkowy koszt dojazdu w Szczecinie: ~220-380 zł/mc</span>
+                        <span className="font-semibold">Na czysto po paliwie: ~{Math.max(0, netBreakdown.uopNet - 280).toLocaleString('pl-PL')} zł</span>
                       </div>
                     </div>
                   )}
@@ -1262,6 +1291,18 @@ export default function HomePage() {
 
     return (
       <div className="w-full">
+        {/* 🏝️ Floating Dynamic Island with Offline, Scraping and Market status */}
+        <DynamicIsland
+          isListening={isListening}
+          isScraping={scrapeLoading}
+          comparedCount={comparedAdIds.size}
+          totalOffersCount={filteredAds.length}
+          avgSalaryPln={marketOverview.overallAvgSalary || 7850}
+          onOpenCompare={() => setCompareModalOpen(true)}
+          onStopListening={() => setIsListening(false)}
+          onRefresh={() => scrapeNow()}
+        />
+
         {/* 🗺️ Enterprise WebGL Map Container (Persisted in GPU memory for zero-lag tab switching) */}
         <div className={cn('w-full h-[calc(100dvh-128px)] md:h-[calc(100dvh-56px)] relative overflow-hidden', isMapActive && !isSplitView ? 'block' : 'hidden')}>
           <MapViewDynamic
@@ -1633,7 +1674,7 @@ export default function HomePage() {
 
                     <div>
                       <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">
-                        Promień dojazdu
+                        Czas dojazdu (Szczecin)
                       </label>
                       <select
                         value={commuteRadiusKm}
@@ -1643,12 +1684,12 @@ export default function HomePage() {
                         }}
                         className="w-full h-8 px-2 text-xs font-semibold rounded-lg border border-input bg-background cursor-pointer"
                       >
-                        <option value={0}>Wszędzie</option>
-                        <option value={5}>max 5 km</option>
-                        <option value={10}>max 10 km</option>
-                        <option value={15}>max 15 km</option>
-                        <option value={25}>max 25 km</option>
-                        <option value={50}>max 50 km</option>
+                        <option value={0}>Wszędzie (bez limitu)</option>
+                        <option value={5}>max 5 km (~10 min)</option>
+                        <option value={10}>max 10 km (~20 min)</option>
+                        <option value={15}>max 15 km (~30 min)</option>
+                        <option value={25}>max 25 km (~45 min)</option>
+                        <option value={50}>max 50 km (region)</option>
                       </select>
                     </div>
 

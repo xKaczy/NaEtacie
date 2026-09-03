@@ -7,8 +7,9 @@ import ListSkeleton from '@/components/feedback/ListSkeleton';
 import type { MaskedAnnouncement } from '@/lib/types/announcement';
 import type { PaginatedResponse } from '@/lib/types/api';
 
-import { getAnnouncementExternalUrl } from '@/lib/utils';
+import { getAnnouncementExternalUrl, triggerHaptic } from '@/lib/utils';
 import { OlxLinkActions } from '@/components/olx/OlxLinkActions';
+import { Phone, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
 
 export interface AnnouncementListProps {
   onItemClick?: (id: string) => void;
@@ -313,14 +314,29 @@ export default function AnnouncementList({ onItemClick }: AnnouncementListProps)
               </span>
             </div>
 
-            {/* Location with map pin icon */}
-            <div className="announcement-card__location">
-              <MapPinIcon />
-              <span>{announcement.location_text}</span>
+            {/* Location with map pin icon + New / 24h Badge */}
+            <div className="announcement-card__location flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                <MapPinIcon />
+                <span className="truncate">{announcement.location_text}</span>
+              </div>
+              {/* Radar 24h tag */}
+              {(() => {
+                const isRecent = (() => {
+                  if (!announcement.scraped_at) return false;
+                  const d = typeof announcement.scraped_at === 'string' ? new Date(announcement.scraped_at) : announcement.scraped_at;
+                  return (Date.now() - d.getTime()) < 24 * 3600 * 1000;
+                })();
+                return isRecent ? (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                    <Sparkles className="w-2.5 h-2.5 animate-pulse" /> NOWE 24H
+                  </span>
+                ) : null;
+              })()}
             </div>
 
-            {/* Footer: price + relative time + direct open button */}
-            <div className="announcement-card__footer flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+            {/* Footer: price + relative time + direct Call / SMS + open button */}
+            <div className="announcement-card__footer flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/40">
               <div className="flex items-center gap-2">
                 <span className="announcement-card__price font-bold text-emerald-600 dark:text-emerald-400">
                   {formatPrice(announcement.price)}
@@ -337,19 +353,49 @@ export default function AnnouncementList({ onItemClick }: AnnouncementListProps)
                 </time>
               </div>
 
-              <OlxLinkActions
-                ad={{
-                  id: announcement.id || announcement.deduplication_key,
-                  deduplication_key: announcement.deduplication_key,
-                  title: announcement.title,
-                  source_url: announcement.source_url,
-                  source_portal: announcement.source_portal,
-                  category: announcement.category,
-                }}
-                variant="default"
-                size="sm"
-                showMenu={false}
-              />
+              <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                {/* One-Tap Phone Dial */}
+                {announcement.contact_info && /^\+?\d[\d\s-]{7,}\d$/.test(announcement.contact_info.trim()) && (
+                  <a
+                    href={`tel:${announcement.contact_info.replace(/\s+/g, '')}`}
+                    onClick={() => triggerHaptic(12)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold transition-all shadow-2xs"
+                    title={`Zadzwoń: ${announcement.contact_info}`}
+                  >
+                    <Phone className="w-3 h-3" />
+                    <span className="hidden sm:inline">Zadzwoń</span>
+                  </a>
+                )}
+
+                {/* One-Tap SMS Pitch */}
+                {announcement.contact_info && /^\+?\d[\d\s-]{7,}\d$/.test(announcement.contact_info.trim()) && (
+                  <a
+                    href={`sms:${announcement.contact_info.replace(/\s+/g, '')}?body=${encodeURIComponent(
+                      `Dzień dobry! Piszę w sprawie ogłoszenia: "${announcement.title.slice(0, 45)}" z serwisu NaEtacie. Jestem dyspozycyjny i zainteresowany zleceniem. Proszę o kontakt.`
+                    )}`}
+                    onClick={() => triggerHaptic(12)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-blue-600 dark:text-blue-400 text-xs font-bold transition-all shadow-2xs"
+                    title="Napisz szybki SMS ze zgłoszeniem"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span>SMS</span>
+                  </a>
+                )}
+
+                <OlxLinkActions
+                  ad={{
+                    id: announcement.id || announcement.deduplication_key,
+                    deduplication_key: announcement.deduplication_key,
+                    title: announcement.title,
+                    source_url: announcement.source_url,
+                    source_portal: announcement.source_portal,
+                    category: announcement.category,
+                  }}
+                  variant="default"
+                  size="sm"
+                  showMenu={false}
+                />
+              </div>
             </div>
           </motion.div>
         );

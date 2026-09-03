@@ -10,6 +10,7 @@ import {
   TrendingUp,
   MapPin,
   X,
+  WifiOff,
 } from 'lucide-react';
 import { cn, triggerHaptic } from '@/lib/utils';
 import { playUiSound } from '@/lib/motion/soundEngine';
@@ -40,8 +41,25 @@ export function DynamicIsland({
   onStopListening,
   onRefresh,
 }: DynamicIslandProps) {
+  const [isOffline, setIsOffline] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setIsOffline(!navigator.onLine);
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Determine primary active state
-  const state = isListening
+  const state = isOffline
+    ? 'offline'
+    : isListening
     ? 'listening'
     : isScraping
     ? 'scraping'
@@ -56,6 +74,7 @@ export function DynamicIsland({
         transition={SPRING_PRESETS.snappy}
         className={cn(
           'flex items-center gap-2 px-3.5 py-1.5 rounded-full backdrop-blur-2xl border shadow-2xl transition-colors duration-300 text-xs font-black',
+          state === 'offline' && 'bg-amber-950/90 text-amber-200 border-amber-500/50 shadow-amber-500/20 ring-2 ring-amber-500/30',
           state === 'listening' && 'bg-red-950/90 text-red-200 border-red-500/40 shadow-red-500/20 ring-2 ring-red-500/30',
           state === 'scraping' && 'bg-primary/90 text-primary-foreground border-primary shadow-primary/20',
           state === 'comparing' && 'bg-blue-950/90 text-blue-200 border-blue-500/40 shadow-blue-500/20 ring-2 ring-blue-500/20',
@@ -63,6 +82,19 @@ export function DynamicIsland({
         )}
       >
         <AnimatePresence mode="wait">
+          {/* State 0: Offline Mode Notice */}
+          {state === 'offline' && (
+            <motion.div
+              key="offline"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="flex items-center gap-2"
+            >
+              <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span className="text-[11px] font-bold">Tryb offline — zapisane oferty w pamięci</span>
+            </motion.div>
+          )}
           {/* State 1: Voice Listening Waveform */}
           {state === 'listening' && (
             <motion.div

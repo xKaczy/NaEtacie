@@ -19,6 +19,7 @@ import {
   Home,
   Award,
   Wrench,
+  Bus,
 } from 'lucide-react';
 import type { DisplayAnnouncement } from '@/lib/types/display';
 import { normalizeCategory, CATEGORIES } from '@/lib/data/categories';
@@ -26,6 +27,7 @@ import { triggerHaptic, getAnnouncementExternalUrl } from '@/lib/utils';
 import { generateApplicationMessageDraft } from '@/lib/contact/draftGenerator';
 import { EmployerTrustBadge } from '@/components/safety/EmployerTrustBadge';
 import { evaluateEmployerTrust } from '@/lib/safety/employerTrustEvaluator';
+import { getQuickSmsHref, getZditmTransitUrl } from '@/lib/geo/transitRouting';
 
 export interface MobileBottomSheetProps {
   ads: DisplayAnnouncement[];
@@ -263,50 +265,75 @@ export function MobileBottomSheet({
               </div>
             )}
 
-            {/* ── 1-Tap Thumb Zone Action Buttons (Min 48px Height) ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+            {/* ── 1-Tap Thumb Zone Action Buttons (Min 44px Height for Work Gloves) ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
               {phoneDigits ? (
-                <a
-                  href={`tel:+48${phoneDigits}`}
-                  onClick={() => triggerHaptic(20)}
-                  className="sm:col-span-1 min-h-[48px] py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-emerald-400/40"
-                  title="Zadzwoń do majstra"
-                >
-                  <Phone className="w-4 h-4 animate-bounce" />
-                  <span>Zadzwoń</span>
-                </a>
+                <>
+                  <a
+                    href={`tel:+48${phoneDigits}`}
+                    onClick={() => triggerHaptic(20)}
+                    className="min-h-[44px] py-2 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-emerald-400/40"
+                    title="Zadzwoń do majstra"
+                  >
+                    <Phone className="w-4 h-4" />
+                    <span>Zadzwoń</span>
+                  </a>
+                  <a
+                    href={getQuickSmsHref({ phone: currentDisplayAd.phone, title: currentDisplayAd.title, district: currentDisplayAd.location_text }) || `sms:+48${phoneDigits}`}
+                    onClick={() => triggerHaptic(15)}
+                    className="min-h-[44px] py-2 px-2.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-sky-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-sky-400/40"
+                    title="Wyślij gotowy SMS zgłoszeniowy bez pisania"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Szybki SMS</span>
+                  </a>
+                </>
               ) : (
                 <a
                   href={getQuickContactLink(currentDisplayAd)}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => triggerHaptic(15)}
-                  className="sm:col-span-1 min-h-[48px] py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-900/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-emerald-400/40"
+                  className="col-span-2 sm:col-span-1 min-h-[44px] py-2 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-emerald-400/40"
                 >
                   <MessageSquare className="w-4 h-4" />
                   <span>Napisz SMS</span>
                 </a>
               )}
 
-              <a
-                href={getDirectionsUrl(currentDisplayAd)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => triggerHaptic(15)}
-                className="min-h-[48px] py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-blue-900/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-blue-400/40"
-              >
-                <Navigation className="w-4 h-4" />
-                <span>Trasa GPS</span>
-              </a>
+              {currentDisplayAd.latitude && currentDisplayAd.longitude ? (
+                <a
+                  href={getZditmTransitUrl(currentDisplayAd.latitude, currentDisplayAd.longitude)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => triggerHaptic(15)}
+                  className="min-h-[44px] py-2 px-2.5 bg-pink-700 hover:bg-pink-600 text-white font-extrabold text-xs rounded-xl shadow-md shadow-pink-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-pink-400/40"
+                  title="Dojazd tramwajem / autobusem ZDiTM Szczecin na 6:30 rano"
+                >
+                  <Bus className="w-4 h-4" />
+                  <span>ZDiTM 6:30</span>
+                </a>
+              ) : (
+                <a
+                  href={getDirectionsUrl(currentDisplayAd)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => triggerHaptic(15)}
+                  className="min-h-[44px] py-2 px-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-blue-400/40"
+                >
+                  <Navigation className="w-4 h-4" />
+                  <span>Trasa GPS</span>
+                </a>
+              )}
 
               <a
                 href={externalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => triggerHaptic(15)}
-                className="min-h-[48px] py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-900/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-amber-300"
+                className="col-span-2 sm:col-span-1 min-h-[44px] py-2 px-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-amber-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-amber-300"
               >
-                <span>Otwórz ofertę</span>
+                <span>Otwórz</span>
                 <ExternalLink className="w-4 h-4" />
               </a>
             </div>

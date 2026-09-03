@@ -32,6 +32,7 @@ import { isPointInPolygon } from './utils';
 import { MapConstructionSites } from './MapConstructionSites';
 import { MapTransitStops } from './MapTransitStops';
 import { MapPogonSzczecin, POGON_STADIUM_COORDS } from './MapPogonSzczecin';
+import { getQuickSmsHref, getZditmTransitUrl } from '@/lib/geo/transitRouting';
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -540,18 +541,33 @@ function MarkerPopup({
           )}
         </div>
 
-        {/* ── Phone ── */}
+        {/* ── Phone & 1-Tap Quick SMS ── */}
         {ad.phone && (
-          <a href={`tel:${ad.phone}`} style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '6px 10px', marginBottom: '8px',
-            background: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(220,252,231,0.85)',
-            border: `1px solid ${isDark ? 'rgba(16,185,129,0.3)' : '#86efac'}`,
-            borderRadius: '8px', fontSize: '11px', color: isDark ? '#34d399' : '#15803d',
-            fontWeight: 700, textDecoration: 'none', fontVariantNumeric: 'tabular-nums',
-          }}>
-            <span>📞</span> {ad.phone}
-          </a>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+            <a href={`tel:${ad.phone.replace(/\s+/g, '')}`} style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+              padding: '7px 8px',
+              background: isDark ? 'rgba(16,185,129,0.18)' : 'rgba(220,252,231,0.95)',
+              border: `1px solid ${isDark ? 'rgba(16,185,129,0.4)' : '#86efac'}`,
+              borderRadius: '8px', fontSize: '11px', color: isDark ? '#34d399' : '#15803d',
+              fontWeight: 800, textDecoration: 'none', fontVariantNumeric: 'tabular-nums',
+            }}>
+              <span>📞</span> Zadzwoń
+            </a>
+            <a
+              href={getQuickSmsHref({ phone: ad.phone, title: ad.title, district: ad.location_text }) || `sms:${ad.phone}`}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                padding: '7px 8px',
+                background: isDark ? 'rgba(59,130,246,0.18)' : 'rgba(219,234,254,0.95)',
+                border: `1px solid ${isDark ? 'rgba(59,130,246,0.4)' : '#93c5fd'}`,
+                borderRadius: '8px', fontSize: '11px', color: isDark ? '#60a5fa' : '#1d4ed8',
+                fontWeight: 800, textDecoration: 'none',
+              }}
+            >
+              <span>💬</span> Szybki SMS
+            </a>
+          </div>
         )}
 
         {/* ── Divider ── */}
@@ -592,39 +608,56 @@ function MarkerPopup({
           </a>
         </div>
 
-        {/* ── Navigate & Street View ── */}
+        {/* ── Commute & Navigation ── */}
         {ad.latitude != null && ad.longitude != null && (
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div style={{ display: 'flex', gap: '5px' }}>
             <a
               href={`https://www.google.com/maps/dir/?api=1&destination=${ad.latitude},${ad.longitude}`}
               target="_blank"
               rel="noopener noreferrer"
+              title="Dojazd samochodem"
               style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                padding: '5px 6px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                padding: '5px 4px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
                 textDecoration: 'none', color: isDark ? '#93c5fd' : '#1d4ed8',
                 background: isDark ? 'rgba(30,41,59,0.7)' : 'rgba(241,245,249,0.9)',
                 border: `1px solid ${isDark ? '#334155' : '#cbd5e1'}`,
                 transition: 'opacity 0.15s ease',
               }}
             >
-              🧭 Dojazd
+              🚗 Auto
+            </a>
+            <a
+              href={getZditmTransitUrl(ad.latitude, ad.longitude)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Dojazd tramwajem / autobusem ZDiTM Szczecin na 6:30 rano"
+              style={{
+                flex: 1.2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                padding: '5px 4px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
+                textDecoration: 'none', color: isDark ? '#f472b6' : '#be185d',
+                background: isDark ? 'rgba(80,7,36,0.35)' : 'rgba(253,242,248,0.95)',
+                border: `1px solid ${isDark ? '#831843' : '#fbcfe8'}`,
+                transition: 'opacity 0.15s ease',
+              }}
+            >
+              🚌 ZDiTM 6:30
             </a>
             <a
               href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ad.latitude},${ad.longitude}`}
               target="_blank"
               rel="noopener noreferrer"
-              title="Zobacz widok sferyczny ulicy"
+              title="Zobacz widok sferyczny Google Street View"
               style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
-                padding: '5px 6px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
+                padding: '5px 4px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
                 textDecoration: 'none', color: isDark ? '#34d399' : '#047857',
                 background: isDark ? 'rgba(6,78,59,0.25)' : 'rgba(209,250,229,0.9)',
                 border: `1px solid ${isDark ? 'rgba(52,211,153,0.3)' : '#a7f3d0'}`,
                 transition: 'opacity 0.15s ease',
               }}
             >
-              🌐 Street View
+              🌐 Widok
             </a>
           </div>
         )}

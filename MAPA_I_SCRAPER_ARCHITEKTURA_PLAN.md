@@ -200,5 +200,49 @@ Interfejs zoptymalizowano pod kątem maksymalnej czytelności na ekranach OLED i
 - [x] Pełny dostęp do mapy, interfejsu i zcache'owanych ofert w trybie offline w piwnicach i na budowach bez zasięgu GSM.
 - [x] Rozszerzenie bazy testowej o weryfikację strategii cache kafelków GIS (`tests/unit/serviceWorkerGis.test.ts`).
 
+### Etap 4: Nowe Repozytorium & CI/CD Pipeline (W toku)
+- [x] Utworzenie i wypchnięcie pełnego kodu do nowego repozytorium: `https://github.com/xKaczy/NaEtacie`.
+- [ ] Przepięcie webhooków i Git Providera w Vercelu na `xKaczy/NaEtacie` dla automatycznych wdrożeń po każdym `git push`.
+
+### Etap 5: Mobilny Przybornik Fachowca (Narzędzia Terenowe)
+- [ ] **1-Tap Szybki SMS / WhatsApp**: Generowanie gotowej wiadomości zgłoszeniowej do majstra jednym dotknięciem (brak konieczności pisania CV w rękawicach roboczych).
+- [ ] **Kalkulator Dojazdu na 6:30 Rano**: Precyzyjny czas dotarcia na budowę z uwzględnieniem porannego rozkładu ZDiTM Szczecin, SKM i korków na mostach odrzańskich.
+- [ ] **Filtr Zleceń na Weekend / Od zaraz**: Oznaczanie ofert pilnych („potrzebny od jutra / sobota fucha”).
+
+### Etap 6: Persystencja Bazy, Monetyzacja i SEO Szczecina
+- [ ] **Klucz Produkcyjny Firebase lub Fallback DB**: Zabezpieczenie ciągłego zapisu ofert ze scrapera w chmurze bez fallbacku na seed.
+- [ ] **Kalkulator Kosztorysowy i Generator Umów Budowlanych**: Formularz PDF umowy o dzieło/zlecenie i protokołu odbioru robót dla samozatrudnionych.
+- [ ] **Programmatic SEO dla Dzielnic Szczecina**: Automatyczne strony lądowania (`/praca/malarz-szczecin`, `/praca/pogodno`) indeksujące oferty w Google.
+
+---
+
+## 6. Strategiczna Diagnoza Potrzeb Aplikacji (Analiza Lead Architekta)
+
+W obecnym stanie technicznym (Next.js 14, WebGL 3D, Service Worker PWA, Vercel) platforma osiągnęła poziom zaawansowania niedostępny dla generycznych portali z ogłoszeniami. Aby jednak aplikacja odniosła **sukces komercyjny i stała się codziennym narzędziem pracy szczecińskich fachowców**, zidentyfikowano 5 kluczowych obszarów:
+
+### 6.1. Złamanie Bariery Aplikowania ("Rękawice Robocze UX")
+Fachowiec na rusztowaniu nie ma CV w PDF ani czasu na wypełnianie formularzy.
+* **Rozwiązanie**: Wdrożenie **1-Tap Quick Apply**:
+  - Dwa duże, kontrastowe przyciski na dole karty: `📞 Zadzwoń od razu` oraz `💬 Wyślij gotowy SMS`.
+  - Treść SMS generowana automatycznie: *„Dzień dobry, piszę w sprawie zlecenia [Tytuł]. Jestem z [Dzielnica], mam własny sprzęt i dyspozycyjność od zaraz. Proszę o kontakt: [Numer]”*.
+
+### 6.2. Logistyka Dojazdów na 6:30 (Realia Szczecińskie)
+Specyfika Szczecina (rozcięcie miasta rzeką Odrą i Regalicą, wąskie gardła mostowe, remonty torowisk) sprawia, że dojazd z Prawobrzeża na Warszewo lub Police o 6:00 rano to kluczowy czynnik decyzyjny.
+* **Rozwiązanie**: Bezpośrednie linkowanie do rozkładów ZDiTM i nawigacji samochodowej ze sztywnym czasem odjazdu o poranku.
+
+### 6.3. Okno Przygraniczne (Strefa Niemiecka: Schwedt, Pasewalk, Löcknitz)
+Szczecin to jedyna aglomeracja w Polsce, z której setki murarzy, tynkarzy i elektryków dojeżdża codziennie za granicę, zarabiając w Euro (15–28 €/h).
+* **Rozwiązanie**: Opcjonalny przełącznik w filtrach: **„Szczecin + Przygranicze DE”** z automatycznym przeliczaniem stawek EUR -> PLN wg kursu NBP.
+
+### 6.4. Narzędzia Zatrzymujące Użytkownika (B2B Retention)
+Zwykły portal traci użytkownika, gdy ten znajdzie pracę. Narzędzia robocze sprawiają, że wykonawca wraca do aplikacji każdego tygodnia:
+* **Kalkulator Zapotrzebowania**: Szybki przelicznik m² -> liczba worków gładzi, płyt GK, gruntu, kleju.
+* **Generator Umowy i Protokołu Odbioru**: Bezpieczny szablon chroniący przed nieuczciwymi inwestorami, którzy nie płacą po zakończeniu prac.
+
+### 6.5. Bezpłatny Ruch Organiczny z Google (SEO)
+Strony z ogłoszeniami żyją z darmowego ruchu z wyszukiwarki na zapytania lokalne:
+* Wygenerowanie statycznych podstron pod zapytania: *„praca budowlana szczecin”*, *„dam prace wykończenia szczecin”*, *„szpachlarz szczecin stawka”*.
+
 ---
 *Dokument zatwierdzony przez Architekta Systemowego NaEtacie.pl.*
+

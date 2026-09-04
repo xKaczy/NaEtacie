@@ -28,7 +28,7 @@ import { MapWeatherWidget } from './MapWeatherWidget';
 import { calculateCommuteEstimate } from './MapCommuteRoute';
 import { getDistrictSalaryGeoJson } from './MapDistrictSalaryHeatmap';
 import { triggerHaptic, formatShortPrice, ensureAbsoluteUrl, getAnnouncementExternalUrl } from '@/lib/utils';
-import { isPointInPolygon, generateSpiderfyPositions, createGeoJsonCircle, isValidCoordinate, sanitizeFeatureCollection } from './utils';
+import { isPointInPolygon, generateSpiderfyPositions, createGeoJsonCircle, isValidCoordinate, sanitizeFeatureCollection, matchesSalaryFilter, type MapSalaryFilter } from './utils';
 import { MapConstructionSites } from './MapConstructionSites';
 import { MapTransitStops } from './MapTransitStops';
 import { MapPogonSzczecin, POGON_STADIUM_COORDS } from './MapPogonSzczecin';
@@ -43,6 +43,7 @@ import { applySunlightToMap, type SunlightMode } from '@/lib/geo/sunlightEngine'
 import { MarkerPopup } from './MarkerPopup';
 import { getMarkerHtml } from './markerUtils';
 import { CategoryFilter } from './CategoryFilterBar';
+import { MapStats } from './MapStats';
 
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════════
@@ -297,6 +298,7 @@ export default function MapView({
   const [lassoPolygon, setLassoPolygon] = useState<Array<[number, number]> | null>(null);
   const [isochronePolygon, setIsochronePolygon] = useState<Array<[number, number]> | null>(null);
   const [quickFilter, setQuickFilter] = useState<'all' | 'high_pay' | 'remote' | 'recent' | 'budowa' | 'instalacje'>('all');
+  const [salaryFilter, setSalaryFilter] = useState<MapSalaryFilter>('all');
   const [showSalaryHeatmap, setShowSalaryHeatmap] = useState(false);
   const [showConstructionSites, setShowConstructionSites] = useState(false);
   const [showTransitStops, setShowTransitStops] = useState(false);
@@ -380,6 +382,9 @@ export default function MapView({
     } else if (quickFilter === 'instalacje') {
       base = base.filter((ad) => normalizeCategory(ad.category) === 'instalacje');
     }
+    if (salaryFilter !== 'all') {
+      base = base.filter((ad) => matchesSalaryFilter(salaryFilter, ad.price, ad.title, ad.description));
+    }
     if (lassoPolygon && lassoPolygon.length >= 3) {
       base = base.filter((ad) => isPointInPolygon([ad.latitude!, ad.longitude!], lassoPolygon));
     }
@@ -390,7 +395,7 @@ export default function MapView({
       base = base.filter((ad) => isJobWithinRadar(ad.latitude, ad.longitude, homeBaseCoords, radarRadiusKm));
     }
     return base;
-  }, [visibleAds, quickFilter, lassoPolygon, isochronePolygon, isRadarActive, homeBaseCoords, radarRadiusKm]);
+  }, [visibleAds, quickFilter, salaryFilter, lassoPolygon, isochronePolygon, isRadarActive, homeBaseCoords, radarRadiusKm]);
 
   // Detect app-level dark mode
   useEffect(() => {
@@ -2744,8 +2749,26 @@ export default function MapView({
         )}
       </div>
 
-      {/* Category filter bar (Desktop top toolbar) */}
-      <CategoryFilter active={activeCategories} onChange={onCategoryChange} ui={ui} top={12} left={235} right={140} />
+      {/* Category filter bar (Desktop top toolbar with Rate Mode Filters) */}
+      <CategoryFilter
+        active={activeCategories}
+        onChange={onCategoryChange}
+        salaryFilter={salaryFilter}
+        onSalaryFilterChange={setSalaryFilter}
+        ui={ui}
+        top={12}
+        left={235}
+        right={140}
+      />
+
+      {/* Tactical HUD Map Stats overlay */}
+      <MapStats
+        ads={geocodedAds}
+        total={ads.length}
+        visible={geocodedAds.length}
+        ui={ui}
+        isDark={isDark}
+      />
 
       {geocodedAds.length === 0 && (
         <EmptyOverlay
@@ -2753,6 +2776,7 @@ export default function MapView({
           hasAny={visibleAds.length > 0 || ads.length > 0}
           onReset={() => {
             onCategoryChange(new Set(ALL_CATEGORY_KEYS));
+            setSalaryFilter('all');
             setLassoPolygon(null);
             setIsochronePolygon(null);
           }}

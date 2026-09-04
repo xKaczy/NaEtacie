@@ -1,5 +1,5 @@
 import { CATEGORIES, normalizeCategory } from '@/lib/data/categories';
-import { formatShortPrice } from '@/lib/utils';
+import { parseJobSalary } from './utils';
 
 /**
  * Creates GeoJSON circular polygon for radius / commute visualization
@@ -71,18 +71,13 @@ export function getMarkerHtml(
 ): string {
   const cat = CATEGORIES[normalizeCategory(category)];
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const shortPrice = price ? formatShortPrice(price) : null;
-
-  const numPrice =
-    typeof price === 'number'
-      ? price
-      : typeof price === 'string'
-      ? parseFloat(price.replace(/[^\d.]/g, ''))
-      : null;
-
-  // Hourly or monthly salary threshold against Szczecin median (45 zł/h or 7500 zł/mc)
-  const isHighPay = numPrice !== null && ((numPrice >= 45 && numPrice <= 300) || numPrice >= 7500);
-  const isMidPay = !isHighPay && numPrice !== null && ((numPrice >= 30 && numPrice < 45) || numPrice >= 5000);
+  const parsedRate = parseJobSalary(price);
+  const isHighPay = parsedRate.isAboveSzczecinMedian;
+  const isMidPay = !isHighPay && parsedRate.numericValue !== null && (
+    (parsedRate.rateType === 'hourly' && parsedRate.numericValue >= 32) ||
+    (parsedRate.rateType === 'daily' && parsedRate.numericValue >= 250) ||
+    (parsedRate.rateType === 'monthly' && parsedRate.numericValue >= 5000)
+  );
 
   // Tactical heat-bar colors
   const heatColor = isUrgent ? '#ef4444' : isHighPay ? '#10b981' : isMidPay ? '#f59e0b' : '#64748b';
@@ -161,7 +156,7 @@ export function getMarkerHtml(
         <span style="font-size:${iconSize};line-height:1;display:flex;align-items:center;">${cat.icon}</span>
         
         <!-- Price Label -->
-        <span style="font-size:${priceFontSize};font-weight:800;color:#f8fafc;letter-spacing:-0.02em;white-space:nowrap;">${shortPrice || 'Wycena'}</span>
+        <span style="font-size:${priceFontSize};font-weight:800;color:#f8fafc;letter-spacing:-0.02em;white-space:nowrap;">${parsedRate.displayPill}</span>
       </div>
 
       <!-- Downward Pointing Tactical Needle -->

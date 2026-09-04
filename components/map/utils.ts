@@ -484,5 +484,107 @@ export function sanitizeFeatureCollection(features: unknown[]): GeoJSON.FeatureC
   };
 }
 
+/**
+ * Classification of construction salary rates for map pills and tactical HUD filters.
+ * Supports:
+ * - 'hourly' (Standard 35-55 zł/h in Szczecin)
+ * - 'daily' (Dniówka 250-600 zł/dzień)
+ * - 'monthly' (Miesięczna 6000-14000 zł)
+ * - 'piecework' (Akord / m² / mb)
+ */
+export type MapSalaryFilter = 'all' | 'with_salary' | 'hourly_standard' | 'daily_rate' | 'high_pay' | 'urgent';
 
+export interface ParsedJobRate {
+  rawPrice: string | number | null;
+  numericValue: number | null;
+  rateType: 'hourly' | 'daily' | 'monthly' | 'piecework' | 'unknown';
+  isAboveSzczecinMedian: boolean;
+  displayPill: string;
+}
 
+export function parseJobSalary(price: string | number | null | undefined, title?: string, desc?: string): ParsedJobRate {
+  if (price === null || price === undefined) {
+    return {
+      rawPrice: null,
+      numericValue: null,
+      rateType: 'unknown',
+      isAboveSzczecinMedian: false,
+      displayPill: 'Wycena',
+    };
+  }
+
+  const str = String(price).toLowerCase();
+  const textContext = `${str} ${title || ''} ${desc || ''}`.toLowerCase();
+
+  let num: number | null = null;
+  if (typeof price === 'number') {
+    num = price;
+  } else {
+    const cleaned = str.replace(/[^\d.,]/g, '').replace(',', '.');
+    const parsed = parseFloat(cleaned);
+    num = !isNaN(parsed) && isFinite(parsed) ? parsed : null;
+  }
+
+  // Detect rate unit
+  let rateType: ParsedJobRate['rateType'] = 'unknown';
+  if (textContext.includes('/h') || textContext.includes('godz') || textContext.includes('zł/h') || (num !== null && num >= 20 && num <= 160)) {
+    rateType = 'hourly';
+  } else if (textContext.includes('dniów') || textContext.includes('/dzień') || textContext.includes('dzien') || (num !== null && num > 160 && num <= 900)) {
+    rateType = 'daily';
+  } else if (textContext.includes('m2') || textContext.includes('m²') || textContext.includes('mb') || textContext.includes('akord')) {
+    rateType = 'piecework';
+  } else if (num !== null && num > 900) {
+    rateType = 'monthly';
+  }
+
+  // Szczecin Median & standard benchmarks:
+  // Hourly standard: 35-50 zł/h, Above median: >= 45 zł/h
+  // Dniówka standard: 280-450 zł/dzień, Above median: >= 380 zł/dzień
+  // Monthly standard: >= 7000 zł
+  let isAboveMedian = false;
+  if (rateType === 'hourly' && num !== null && num >= 45) isAboveMedian = true;
+  if (rateType === 'daily' && num !== null && num >= 380) isAboveMedian = true;
+  if (rateType === 'monthly' && num !== null && num >= 7500) isAboveMedian = true;
+
+  let displayPill = 'Wycena';
+  if (num !== null) {
+    if (rateType === 'hourly') displayPill = `${num} zł/h`;
+    else if (rateType === 'daily') displayPill = `${num} zł/dz`;
+    else if (num >= 1000) displayPill = `${(num / 1000).toFixed(num % 1000 === 0 ? 0 : 1)}k zł`;
+    else displayPill = `${num} zł`;
+  }
+
+  return {
+    rawPrice: price,
+    numericValue: num,
+    rateType,
+    isAboveSzczecinMedian: isAboveMedian,
+    displayPill,
+  };
+}
+
+export function matchesSalaryFilter(
+  filter: MapSalaryFilter,
+  price: string | number | null | undefined,
+  title?: string,
+  desc?: string
+): boolean {
+  if (filter === 'all') return true;
+  const parsed = parseJobSalary(price, title, desc);
+
+  if (filter === 'with_salary') {
+    return parsed.numericValue !== null && parsed.numericValue > 0;
+  }
+  if (filter === 'hourly_standard') {
+    // Standard Szczecin: stawka godzinowa (30 - 70 zł/h)
+    return parsed.rateType === 'hourly' && parsed.numericValue !== null && parsed.numericValue >= 30;
+  }
+  if (filter === 'daily_rate') {
+    // Dniówka budowlana (od 250 zł/dzień)
+    return parsed.rateType === 'daily' && parsed.numericValue !== null && parsed.numericValue >= 220;
+  }
+  if (filter === 'high_pay') {
+    return parsed.isAboveSzczecinMedian;
+  }
+  return true;
+}

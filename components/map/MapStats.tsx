@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { CATEGORIES, ALL_CATEGORY_KEYS, normalizeCategory } from '@/lib/data/categories';
 import type { DisplayAnnouncement } from '@/lib/types/display';
+import { parseJobSalary } from './utils';
 
 export interface MapStatsProps {
   ads: DisplayAnnouncement[];
@@ -18,12 +19,28 @@ export interface MapStatsProps {
 }
 
 export function MapStats({ ads, total, visible, ui }: MapStatsProps) {
-  const avgPrice = useMemo(() => {
-    const prices = ads
-      .filter((a) => typeof a.price === 'number' && a.price > 0)
-      .map((a) => a.price as number);
-    if (prices.length === 0) return null;
-    return Math.round(prices.reduce((s, p) => s + p, 0) / prices.length);
+  const rateMetrics = useMemo(() => {
+    const hourlyRates: number[] = [];
+    const dailyRates: number[] = [];
+    const monthlyRates: number[] = [];
+
+    ads.forEach((ad) => {
+      const parsed = parseJobSalary(ad.price, ad.title, ad.description);
+      if (parsed.numericValue && parsed.numericValue > 0) {
+        if (parsed.rateType === 'hourly') hourlyRates.push(parsed.numericValue);
+        else if (parsed.rateType === 'daily') dailyRates.push(parsed.numericValue);
+        else if (parsed.rateType === 'monthly') monthlyRates.push(parsed.numericValue);
+      }
+    });
+
+    const avg = (arr: number[]) => (arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+
+    return {
+      avgHourly: avg(hourlyRates),
+      avgDaily: avg(dailyRates),
+      avgMonthly: avg(monthlyRates),
+      totalWithRates: hourlyRates.length + dailyRates.length + monthlyRates.length,
+    };
   }, [ads]);
 
   const newestLabel = useMemo(() => {
@@ -78,12 +95,24 @@ export function MapStats({ ads, total, visible, ui }: MapStatsProps) {
         <span style={{ color: ui.border }}>│</span>
         <span style={{ color: ui.textMuted }}>{total} łącznie</span>
       </div>
-      {(avgPrice !== null || newestLabel) && (
+      {(rateMetrics.totalWithRates > 0 || newestLabel) && (
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {avgPrice !== null && (
+          {rateMetrics.avgHourly !== null && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Średnia stawka godzinowa">
+              <span style={{ fontSize: '10px' }}>⏱️</span>
+              <span style={{ fontWeight: 700, color: '#10b981' }}>~{rateMetrics.avgHourly} zł/h</span>
+            </span>
+          )}
+          {rateMetrics.avgDaily !== null && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Średnia dniówka w Szczecinie">
+              <span style={{ fontSize: '10px' }}>📅</span>
+              <span style={{ fontWeight: 700, color: '#38bdf8' }}>~{rateMetrics.avgDaily} zł/dz</span>
+            </span>
+          )}
+          {rateMetrics.avgHourly === null && rateMetrics.avgDaily === null && rateMetrics.avgMonthly !== null && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
               <span>💰</span>
-              <span style={{ fontWeight: 600 }}>~{avgPrice.toLocaleString('pl-PL')} zł</span>
+              <span style={{ fontWeight: 600 }}>~{rateMetrics.avgMonthly.toLocaleString('pl-PL')} zł/mc</span>
             </span>
           )}
           {newestLabel && (

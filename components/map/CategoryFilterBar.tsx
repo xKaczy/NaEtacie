@@ -2,10 +2,13 @@
 
 import React from 'react';
 import { CATEGORIES, ALL_CATEGORY_KEYS, type CategoryKey } from '@/lib/data/categories';
+import type { MapSalaryFilter } from './utils';
 
 export interface CategoryFilterBarProps {
   active: Set<CategoryKey>;
   onChange: (cats: Set<CategoryKey>) => void;
+  salaryFilter?: MapSalaryFilter;
+  onSalaryFilterChange?: (filter: MapSalaryFilter) => void;
   ui: {
     surfaceAlpha: string;
     border: string;
@@ -17,9 +20,18 @@ export interface CategoryFilterBarProps {
   right?: number | string;
 }
 
+const SALARY_PILLS: Array<{ id: MapSalaryFilter; label: string; icon: string }> = [
+  { id: 'all', label: 'Wszystkie stawki', icon: '⚡' },
+  { id: 'hourly_standard', label: 'Godzinówka (Standard)', icon: '⏱️' },
+  { id: 'daily_rate', label: 'Dniówka', icon: '📅' },
+  { id: 'high_pay', label: 'Powyżej mediany (>45zł/h)', icon: '🔥' },
+];
+
 export function CategoryFilterBar({
   active,
   onChange,
+  salaryFilter = 'all',
+  onSalaryFilterChange,
   ui,
   top = 10,
   left = 10,
@@ -36,7 +48,7 @@ export function CategoryFilterBar({
         left: typeof left === 'number' ? `${left}px` : left,
         right: typeof right === 'number' ? `${right}px` : right,
         zIndex: 20,
-        gap: '4px',
+        gap: '5px',
         overflowX: 'auto',
         paddingBottom: '2px',
       }}
@@ -97,6 +109,53 @@ export function CategoryFilterBar({
           </button>
         );
       })}
+
+      {/* Separator between categories and rate filters */}
+      {onSalaryFilterChange && (
+        <>
+          <div
+            style={{
+              width: '1px',
+              height: '20px',
+              background: ui.border,
+              margin: '0 4px',
+              flexShrink: 0,
+              opacity: 0.6,
+            }}
+          />
+          {SALARY_PILLS.map((pill) => {
+            const isSelected = salaryFilter === pill.id;
+            return (
+              <button
+                key={pill.id}
+                onClick={() => onSalaryFilterChange(pill.id)}
+                style={{
+                  flexShrink: 0,
+                  pointerEvents: 'auto',
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  border: `1.5px solid ${isSelected ? '#10b981' : ui.border}`,
+                  background: isSelected ? 'rgba(16, 185, 129, 0.2)' : ui.surfaceAlpha,
+                  backdropFilter: 'blur(6px)',
+                  color: isSelected ? '#10b981' : ui.textMuted,
+                  fontSize: '12px',
+                  fontWeight: isSelected ? 700 : 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: isSelected ? '0 0 12px rgba(16, 185, 129, 0.35)' : ui.shadow,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <span>{pill.icon}</span>
+                <span>{pill.label}</span>
+              </button>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

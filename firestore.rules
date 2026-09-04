@@ -8,13 +8,26 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper: Check if announcement is older than 48 hours
+    function isOlderThan48Hours(resourceData) {
+      return resourceData.scraped_at < request.time - duration.value(48, 'h');
+    }
+
+    // Helper: Check if authenticated user is premium tier
+    function isPremiumUser() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tier == 'premium';
+    }
+
     // Announcements collection
     match /announcements/{announcementId} {
       // Admin SDK (Cloud Functions, API routes) can write — client cannot
       allow create, update, delete: if false;
 
-      // Anyone can read announcements (tier masking is done server-side in API)
-      allow read: if true;
+      // Unauthenticated & free users can only read announcements older than 48 hours;
+      // Premium users can read all announcements.
+      allow read: if isPremiumUser() || isOlderThan48Hours(resource.data);
     }
 
     // Users collection
@@ -25,8 +38,13 @@ service cloud.firestore {
       // Users can create their own profile (first login)
       allow create: if isAuthenticated() && request.auth.uid == userId;
 
-      // Users can update limited fields on their own profile
-      allow update: if isAuthenticated() && request.auth.uid == userId;
+      // Users can update their own profile, but cannot modify sensitive fields (uid, email, tier, created_at)
+      allow update: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.tier == resource.data.tier &&
+        request.resource.data.created_at == resource.data.created_at;
 
       allow delete: if false;
     }
@@ -37,3 +55,4 @@ service cloud.firestore {
     }
   }
 }
+

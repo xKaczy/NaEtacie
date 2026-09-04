@@ -54,7 +54,14 @@ export const AdaptiveMobileTopBar: React.FC<AdaptiveMobileTopBarProps> = ({
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [bridgesOpen, setBridgesOpen] = useState(false);
   const [soundActive, setSoundActive] = useState(true);
-  const { mode, setMode } = useTheme();
+  const {
+    mode,
+    setMode,
+    outdoorMode,
+    setOutdoorMode,
+    ruggedMode,
+    setRuggedMode,
+  } = useTheme();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -199,6 +206,44 @@ export const AdaptiveMobileTopBar: React.FC<AdaptiveMobileTopBarProps> = ({
                     </div>
                   )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(12);
+                    playUiSound('toggle');
+                    setRuggedMode(!ruggedMode);
+                  }}
+                  className={cn(
+                    'p-1.5 rounded-lg text-xs transition flex items-center justify-center',
+                    ruggedMode
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20 ring-1 ring-amber-400/40'
+                      : 'bg-zinc-800/60 hover:bg-zinc-700 text-zinc-400 hover:text-white'
+                  )}
+                  title={ruggedMode ? 'Tryb rękawic (budowlany) włączony' : 'Włącz tryb rękawic (duże przyciski 48px)'}
+                  aria-pressed={ruggedMode}
+                >
+                  <span className="text-[12px] leading-none" role="img" aria-label="Rękawice">🧤</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(12);
+                    playUiSound('toggle');
+                    setOutdoorMode(!outdoorMode);
+                  }}
+                  className={cn(
+                    'p-1.5 rounded-lg text-xs transition flex items-center justify-center',
+                    outdoorMode
+                      ? 'bg-yellow-500/25 text-yellow-300 border border-yellow-500/50 shadow-sm shadow-yellow-500/20 ring-1 ring-yellow-400/40'
+                      : 'bg-zinc-800/60 hover:bg-zinc-700 text-zinc-400 hover:text-white'
+                  )}
+                  title={outdoorMode ? 'Tryb pełnego słońca włączony' : 'Włącz tryb pełnego słońca (kontrast na budowie)'}
+                  aria-pressed={outdoorMode}
+                >
+                  <span className="text-[12px] leading-none" role="img" aria-label="Słońce">☀️</span>
+                </button>
 
                 <button
                   type="button"

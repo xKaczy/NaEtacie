@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Construction Contract & Handover Protocol (Protokół Odbioru Robót) Generator.
  * Generates legally sound, printable and exportable construction contracts and
  * completion acceptance protocols tailored for self-employed contractors in Szczecin.
@@ -202,3 +202,145 @@ export function generateHandoverProtocolHtml(data: HandoverProtocolData): string
 </html>
   `.trim();
 }
+
+export interface TradeBidQuotePdfData {
+  quoteNumber: string;
+  date: string;
+  city: string;
+  contractorName: string;
+  contractorPhone: string;
+  contractorId?: string; // NIP
+  clientName: string;
+  jobTitle: string;
+  siteAddress: string;
+  tradeName: string;
+  scopeQuantity: number;
+  scopeUnit: string;
+  ratePerUnitPLN: number;
+  laborTotalPLN: number;
+  materialsTotalPLN?: number;
+  grandTotalPLN: number;
+  estimatedDays: number;
+  validDays: number;
+}
+
+/**
+ * Generates a formal, printable Quotation / Cost Estimate (Kosztorys Ofertowy)
+ * suitable for printing or saving to PDF via browser print.
+ */
+export function generateTradeBidQuoteHtml(data: TradeBidQuotePdfData): string {
+  return `
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>Kosztorys Ofertowy - ${data.quoteNumber}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; color: #111; padding: 24px; line-height: 1.5; }
+    h1 { font-size: 18px; text-align: center; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sub { text-align: center; font-size: 11px; color: #555; margin-bottom: 20px; }
+    .header { display: flex; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #ddd; padding-bottom: 8px; font-size: 11px; }
+    .parties { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
+    .party-box { flex: 1; border: 1px solid #ddd; padding: 10px; border-radius: 6px; background-color: #fafafa; }
+    .party-box h4 { margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase; color: #555; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th { background: #f4f4f5; padding: 8px; border: 1px solid #ccc; text-align: left; font-size: 11px; text-transform: uppercase; }
+    td { padding: 8px; border: 1px solid #ccc; }
+    .total-box { margin-top: 16px; padding: 12px; border: 2px solid #10b981; border-radius: 6px; background: #f0fdf4; display: flex; justify-content: space-between; align-items: center; }
+    .notes { margin-top: 20px; font-size: 11px; color: #555; border-left: 3px solid #0284c7; padding-left: 10px; }
+    .signatures { display: flex; justify-content: space-between; margin-top: 50px; padding-top: 20px; }
+    .sig-box { width: 45%; text-align: center; border-top: 1px dashed #666; padding-top: 6px; font-weight: bold; font-size: 11px; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div><strong>Miejscowość:</strong> ${data.city}</div>
+    <div><strong>Data sporządzenia:</strong> ${data.date}</div>
+    <div><strong>Nr oferty:</strong> ${data.quoteNumber}</div>
+  </div>
+
+  <h1>Wstępny Kosztorys Ofertowy Robót</h1>
+  <div class="sub">Wygenerowano dla inwestycji: <strong>${data.jobTitle}</strong></div>
+
+  <div class="parties">
+    <div class="party-box">
+      <h4>Wykonawca (Oferent):</h4>
+      <strong>${data.contractorName}</strong><br>
+      ${data.contractorId ? `NIP: ${data.contractorId}<br>` : ''}
+      Tel: ${data.contractorPhone}
+    </div>
+    <div class="party-box">
+      <h4>Zamawiający (Inwestor):</h4>
+      <strong>${data.clientName}</strong><br>
+      Adres inwestycji: ${data.siteAddress}
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 30px; text-align: center;">Lp.</th>
+        <th>Pozycja kosztorysowa / Zakres prac</th>
+        <th style="text-align: right; width: 90px;">Ilość</th>
+        <th style="text-align: right; width: 100px;">Stawka jedn.</th>
+        <th style="text-align: right; width: 120px;">Wartość robocizny</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align: center;">1</td>
+        <td>
+          <strong>${data.tradeName}</strong><br>
+          <span style="font-size: 10.5px; color: #555;">Wykonanie robót zgodnie ze sztuką budowlaną, w tym przygotowanie stanowiska i sprzątanie pobudowlane.</span>
+        </td>
+        <td style="text-align: right;">${data.scopeQuantity} ${data.scopeUnit}</td>
+        <td style="text-align: right;">${data.ratePerUnitPLN.toFixed(2)} zł/${data.scopeUnit}</td>
+        <td style="text-align: right; font-weight: bold;">${data.laborTotalPLN.toFixed(2)} zł</td>
+      </tr>
+      ${data.materialsTotalPLN ? `
+      <tr>
+        <td style="text-align: center;">2</td>
+        <td>
+          <strong>Szacunkowy pakiet materiałów budowlanych</strong><br>
+          <span style="font-size: 10.5px; color: #555;">Klej, grunty, profile, taśmy, zaprawy, chemia budowlana (orientacyjnie).</span>
+        </td>
+        <td style="text-align: right;">1 kpl</td>
+        <td style="text-align: right;">${data.materialsTotalPLN.toFixed(2)} zł</td>
+        <td style="text-align: right; font-weight: bold;">${data.materialsTotalPLN.toFixed(2)} zł</td>
+      </tr>
+      ` : ''}
+    </tbody>
+  </table>
+
+  <div class="total-box">
+    <div>
+      <span style="font-size: 11px; text-transform: uppercase; font-weight: bold; color: #047857;">Łączna kwota kosztorysu:</span><br>
+      <span style="font-size: 10.5px; color: #555;">Szacowany czas realizacji: ok. <strong>${data.estimatedDays} dni roboczych</strong></span>
+    </div>
+    <div style="font-size: 18px; font-weight: 900; color: #065f46;">
+      ${data.grandTotalPLN.toFixed(2)} zł
+    </div>
+  </div>
+
+  <div class="notes">
+    <p><strong>Warunki oferty:</strong></p>
+    <ul>
+      <li>Oferta jest ważna przez ${data.validDays} dni od daty wystawienia.</li>
+      <li>Wiążące potwierdzenie kwoty następuje po bezpłatnej wizji lokalnej na miejscu budowy.</li>
+      <li>Rozliczenie na podstawie protokołu odbioru robót. Możliwość wystawienia faktury VAT.</li>
+    </ul>
+  </div>
+
+  <div class="signatures">
+    <div class="sig-box">Podpis Wykonawcy (Oferenta)</div>
+    <div class="sig-box">Akceptacja Inwestora</div>
+  </div>
+</body>
+</html>
+  `.trim();
+}
+

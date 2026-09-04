@@ -255,6 +255,8 @@ export default function AnnouncementDetail({
         title={announcement.title}
         description={announcement.description}
         phone={announcement.contact_info}
+        locationText={announcement.location_text}
+        companyName={announcement.company}
       />
 
       <PitchGeneratorModal

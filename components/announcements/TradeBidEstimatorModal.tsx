@@ -13,6 +13,8 @@ import {
   Clock,
   Hammer,
   FileSpreadsheet,
+  Printer,
+  FileText,
 } from 'lucide-react';
 import {
   SZCZECIN_TRADE_BENCHMARKS,
@@ -20,6 +22,7 @@ import {
   calculateTradeBid,
   BidEstimationResult,
 } from '@/lib/calculator/tradeBidEstimator';
+import { generateTradeBidQuoteHtml } from '@/lib/contracts/contractGenerator';
 
 interface TradeBidEstimatorModalProps {
   isOpen: boolean;
@@ -27,6 +30,8 @@ interface TradeBidEstimatorModalProps {
   title: string;
   description: string;
   phone?: string | null;
+  locationText?: string | null;
+  companyName?: string | null;
 }
 
 export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
@@ -35,17 +40,36 @@ export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
   title,
   description,
   phone,
+  locationText,
+  companyName,
 }) => {
   const initialInference = useMemo(() => inferTradeAndScope(title, description), [title, description]);
 
   const [selectedTrade, setSelectedTrade] = useState<string>(initialInference.tradeKey);
   const [scopeQty, setScopeQty] = useState<number>(initialInference.scope.quantity);
   const [includeMaterials, setIncludeMaterials] = useState<boolean>(false);
+  const [customRatePLN, setCustomRatePLN] = useState<number | null>(null);
+  const [contractorName, setContractorName] = useState<string>('Usługi Remontowo-Budowlane');
+  const [contractorPhone, setContractorPhone] = useState<string>('');
   const [copiedType, setCopiedType] = useState<'sms' | 'wa' | null>(null);
 
   const estimation: BidEstimationResult = useMemo(() => {
-    return calculateTradeBid(selectedTrade, scopeQty, includeMaterials);
-  }, [selectedTrade, scopeQty, includeMaterials]);
+    const base = calculateTradeBid(selectedTrade, scopeQty, includeMaterials);
+    if (customRatePLN && customRatePLN > 0) {
+      const laborAvg = Math.round(scopeQty * customRatePLN);
+      const laborMin = Math.round(laborAvg * 0.85);
+      const laborMax = Math.round(laborAvg * 1.15);
+      const materials = includeMaterials ? Math.round(laborAvg * 0.6) : 0;
+      return {
+        ...base,
+        laborAvgPLN: laborAvg,
+        laborMinPLN: laborMin,
+        laborMaxPLN: laborMax,
+        materialsEstimatedPLN: materials,
+      };
+    }
+    return base;
+  }, [selectedTrade, scopeQty, includeMaterials, customRatePLN]);
 
   const handleCopy = (type: 'sms' | 'wa') => {
     const text = type === 'sms' ? estimation.quotationDraftSms : estimation.quotationDraftWhatsApp;
@@ -66,6 +90,38 @@ export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
     const encoded = encodeURIComponent(estimation.quotationDraftSms);
     const smsUrl = cleanPhone ? `sms:${cleanPhone}?body=${encoded}` : `sms:?body=${encoded}`;
     window.open(smsUrl, '_self');
+  };
+
+  const handlePrintQuote = () => {
+    const quoteHtml = generateTradeBidQuoteHtml({
+      quoteNumber: `OFE/${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`,
+      date: new Date().toLocaleDateString('pl-PL'),
+      city: 'Szczecin',
+      contractorName: contractorName.trim() || 'Wykonawca Budowlany',
+      contractorPhone: contractorPhone.trim() || phone || 'Do uzgodnienia',
+      clientName: companyName?.trim() || 'Inwestor / Zleceniodawca',
+      jobTitle: title,
+      siteAddress: locationText || 'Szczecin i okolice',
+      tradeName: estimation.tradeName,
+      scopeQuantity: estimation.scopeQuantity,
+      scopeUnit: estimation.scopeUnit,
+      ratePerUnitPLN: customRatePLN || SZCZECIN_TRADE_BENCHMARKS[selectedTrade]?.avgRatePLN || 100,
+      laborTotalPLN: estimation.laborAvgPLN,
+      materialsTotalPLN: estimation.materialsEstimatedPLN > 0 ? estimation.materialsEstimatedPLN : undefined,
+      grandTotalPLN: estimation.laborAvgPLN + estimation.materialsEstimatedPLN,
+      estimatedDays: Math.ceil(estimation.estimatedHours / 8),
+      validDays: 14,
+    });
+
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(quoteHtml);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => {
+        printWin.print();
+      }, 300);
+    }
   };
 
   if (!isOpen) return null;
@@ -150,7 +206,7 @@ export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
                 className="w-full accent-primary cursor-pointer"
               />
 
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex flex-wrap items-center justify-between pt-1 gap-2">
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -162,6 +218,19 @@ export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
                     Uwzględnij orientacyjny koszt materiałów (+60%)
                   </span>
                 </label>
+
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <span className="text-muted-foreground">Własna stawka:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder={`${SZCZECIN_TRADE_BENCHMARKS[selectedTrade]?.avgRatePLN || 100}`}
+                    value={customRatePLN ?? ''}
+                    onChange={(e) => setCustomRatePLN(e.target.value ? Math.max(1, Number(e.target.value)) : null)}
+                    className="w-16 p-0.5 text-center bg-background border border-border rounded font-semibold text-foreground text-xs"
+                  />
+                  <span className="text-muted-foreground font-semibold">zł/{estimation.scopeUnit}</span>
+                </div>
               </div>
             </div>
 
@@ -189,6 +258,29 @@ export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
                 <span className="text-[10px] text-muted-foreground">
                   ~{Math.ceil(estimation.estimatedHours / 8)} dni roboczych
                 </span>
+              </div>
+            </div>
+
+            {/* Contractor branding for Quote Document */}
+            <div className="p-3 bg-muted/40 rounded-xl border border-border/60 space-y-2">
+              <span className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-primary" /> Dane wykonawcy na kosztorysie / ofercie:
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Nazwa firmy / Jan Kowalski"
+                  value={contractorName}
+                  onChange={(e) => setContractorName(e.target.value)}
+                  className="p-1.5 bg-background border border-border rounded text-xs text-foreground focus:outline-hidden"
+                />
+                <input
+                  type="text"
+                  placeholder="Twój telefon kontaktowy"
+                  value={contractorPhone}
+                  onChange={(e) => setContractorPhone(e.target.value)}
+                  className="p-1.5 bg-background border border-border rounded text-xs text-foreground focus:outline-hidden"
+                />
               </div>
             </div>
 
@@ -223,20 +315,28 @@ export const TradeBidEstimatorModal: React.FC<TradeBidEstimatorModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="p-4 border-t border-border bg-muted/20 grid grid-cols-2 gap-2">
+          <div className="p-3 border-t border-border bg-muted/20 flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={handlePrintQuote}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-card border border-border hover:bg-accent text-foreground rounded-xl font-bold text-xs shadow-2xs transition-all cursor-pointer"
+              title="Drukuj lub zapisz jako PDF oficjalny kosztorys ofertowy"
+            >
+              <Printer className="w-3.5 h-3.5 text-primary" />
+              Drukuj Kosztorys PDF
+            </button>
             <button
               onClick={handleSendSms}
-              className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white rounded-xl font-bold text-xs shadow-sm transition-all cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white rounded-xl font-bold text-xs shadow-sm transition-all cursor-pointer"
             >
-              <MessageSquare className="w-4 h-4" />
-              Wyślij SMS z wyceną
+              <MessageSquare className="w-3.5 h-3.5" />
+              Wyślij SMS
             </button>
             <button
               onClick={handleSendWhatsApp}
-              className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white rounded-xl font-bold text-xs shadow-sm transition-all cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white rounded-xl font-bold text-xs shadow-sm transition-all cursor-pointer"
             >
-              <FileSpreadsheet className="w-4 h-4" />
-              Wyślij na WhatsApp
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              WhatsApp
             </button>
           </div>
         </motion.div>

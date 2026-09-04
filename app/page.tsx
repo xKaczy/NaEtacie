@@ -886,6 +886,9 @@ function AnnouncementCard({
         onClose={() => setTradeBidModalOpen(false)}
         title={ad.title}
         description={ad.description}
+        phone={ad.phone}
+        locationText={ad.location_text}
+        companyName={ad.company}
       />
 
       {/* 1-Click Polish Contractor Pitch Generator Modal */}

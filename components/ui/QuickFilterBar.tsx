@@ -14,14 +14,16 @@ export interface QuickFilter {
 }
 
 const QUICK_FILTERS: QuickFilter[] = [
+  { id: 'bip_tenders', label: '🏛️ Przetargi BIP Szczecin', icon: Building2, color: 'text-amber-600 dark:text-amber-400 bg-amber-500/15 border-amber-500/40 ring-1 ring-amber-500/30 font-black' },
   { id: 'urgent', label: '🚨 Na Cito / Pilne', icon: Flame, color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/30' },
   { id: 'german_border', label: '🇩🇪 Przygranicze DE (€)', icon: Globe, color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
   { id: 'mega_projects', label: '🏗️ Wielkie Budowy', icon: Building2, color: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/30' },
   { id: 'high_pay', label: '💰 Wysokie stawki (>45 zł/h)', icon: Zap, color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30' },
   { id: 'today', label: '✨ Dodane dzisiaj', icon: Sparkles, color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
   { id: 'near_me', label: '📍 Szczecin & Okolice', icon: MapPin, color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/30' },
-  { id: 'finishing', label: '🎨 Wykończenia', icon: Briefcase, color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30' },
+  { id: 'finishing', label: '🎨 Wykończenia i Glazura', icon: Briefcase, color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/30' },
   { id: 'installations', label: '⚡ Instalacje Wod-Kan / SEP', icon: Sparkles, color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/30' },
+  { id: 'shell_structure', label: '🧱 Stan Surowy / Szalunki', icon: Building2, color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/30' },
 ];
 
 interface QuickFilterBarProps {

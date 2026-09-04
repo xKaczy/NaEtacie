@@ -18,6 +18,8 @@ export interface DesktopFilterSidebarProps {
   onSelectDistrict: (district: string | null) => void;
   selectedPortal: string;
   onSelectPortal: (portal: string) => void;
+  selectedTrade?: string | null;
+  onSelectTrade?: (trade: string | null) => void;
   minSalary: number;
   onMinSalaryChange: (val: number) => void;
   commuteKm: number;
@@ -35,11 +37,26 @@ const SZCZECIN_DISTRICTS = [
   'Police & Okolice',
 ];
 
+const POPULAR_TRADES = [
+  'Wszystkie branże',
+  'Płytki i glazura',
+  'Instalacje wod-kan i CO',
+  'Gładzie i malowanie',
+  'Tynki maszynowe',
+  'Cieśla i dekarz',
+  'Zbrojarz i betoniarz',
+  'Sucha zabudowa (G-K)',
+  'Pompy ciepła i HVAC',
+  'Brukarstwo i roboty ziemne',
+];
+
 export function DesktopFilterSidebar({
   selectedDistrict,
   onSelectDistrict,
   selectedPortal,
   onSelectPortal,
+  selectedTrade,
+  onSelectTrade,
   minSalary,
   onMinSalaryChange,
   commuteKm,
@@ -148,7 +165,7 @@ export function DesktopFilterSidebar({
       {/* 4. Portal źródłowy */}
       <div className="space-y-1.5 pt-2 border-t border-border/40">
         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
-          Portal
+          Portal / Źródło
         </span>
         <select
           value={selectedPortal}
@@ -159,6 +176,7 @@ export function DesktopFilterSidebar({
           className="w-full h-8 px-2 text-xs font-bold rounded-xl border border-input bg-background cursor-pointer"
         >
           <option value="all">Wszystkie portale</option>
+          <option value="bip">🏛️ BIP Szczecin (Przetargi)</option>
           <option value="olx">OLX Praca</option>
           <option value="pracuj">Pracuj.pl</option>
           <option value="indeed">Indeed</option>
@@ -166,6 +184,42 @@ export function DesktopFilterSidebar({
           <option value="fixly">Fixly</option>
         </select>
       </div>
+
+      {/* 5. Branże budowlane (Trade Tags) */}
+      {onSelectTrade && (
+        <div className="space-y-1.5 pt-2 border-t border-border/40">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+            <Briefcase className="w-3 h-3 text-primary" />
+            Branża budowlana
+          </span>
+          <div className="space-y-0.5 max-h-44 overflow-y-auto pr-1">
+            {POPULAR_TRADES.map((trade) => {
+              const isAll = trade === 'Wszystkie branże';
+              const isActive = isAll ? !selectedTrade : selectedTrade === trade;
+
+              return (
+                <button
+                  key={trade}
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic(5);
+                    playUiSound('pop');
+                    onSelectTrade(isAll ? null : trade);
+                  }}
+                  className={cn(
+                    'w-full text-left px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer truncate',
+                    isActive
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  )}
+                >
+                  {trade}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

@@ -11,13 +11,22 @@ import {
   Sparkles,
   MapPin,
   TrendingUp,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn, triggerHaptic } from '@/lib/utils';
 
-export type GroupByMode = 'flat' | 'category' | 'portal';
+export type GroupByMode = 'flat' | 'category' | 'portal' | 'trade';
 
-export interface CollapsibleAnnouncementListProps<T extends { id: string; category?: string; source_portal?: string; price?: number | string | null }> {
+export interface CollapsibleAnnouncementListProps<
+  T extends {
+    id: string;
+    category?: string;
+    source_portal?: string;
+    price?: number | string | null;
+    traits?: { trade_tags?: string[] };
+  }
+> {
   items: T[];
   renderItem: (item: T, index: number) => React.ReactNode;
   isLoading?: boolean;
@@ -53,7 +62,15 @@ export function computeAverageSalary<T extends { price?: number | string | null 
  * - LocalStorage state persistence for collapse state & group mode
  * - Haptic feedback integration & reduced motion support
  */
-export default function CollapsibleAnnouncementList<T extends { id: string; category?: string; source_portal?: string; price?: number | string | null }>({
+export default function CollapsibleAnnouncementList<
+  T extends {
+    id: string;
+    category?: string;
+    source_portal?: string;
+    price?: number | string | null;
+    traits?: { trade_tags?: string[] };
+  }
+>({
   items,
   renderItem,
   isLoading = false,
@@ -77,7 +94,7 @@ export default function CollapsibleAnnouncementList<T extends { id: string; cate
   const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('naetacie_list_group_by');
-      if (saved === 'flat' || saved === 'category' || saved === 'portal') return saved;
+      if (saved === 'flat' || saved === 'category' || saved === 'portal' || saved === 'trade') return saved;
     }
     return 'flat';
   });
@@ -128,14 +145,28 @@ export default function CollapsibleAnnouncementList<T extends { id: string; cate
 
     const groups: Record<string, T[]> = {};
     for (const item of items) {
-      let key = 'Inne';
-      if (groupBy === 'category') {
-        key = item.category?.trim() || 'Ogólne budowlane';
-      } else if (groupBy === 'portal') {
-        key = item.source_portal?.toUpperCase() || 'BEZPOŚREDNIE';
+      if (groupBy === 'trade') {
+        const trades = item.traits?.trade_tags;
+        if (trades && trades.length > 0) {
+          for (const t of trades) {
+            if (!groups[t]) groups[t] = [];
+            groups[t].push(item);
+          }
+        } else {
+          const defaultKey = 'Inne / Ogólnobudowlane';
+          if (!groups[defaultKey]) groups[defaultKey] = [];
+          groups[defaultKey].push(item);
+        }
+      } else {
+        let key = 'Inne';
+        if (groupBy === 'category') {
+          key = item.category?.trim() || 'Ogólne budowlane';
+        } else if (groupBy === 'portal') {
+          key = item.source_portal?.toUpperCase() || 'BEZPOŚREDNIE';
+        }
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
       }
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item);
     }
     return groups;
   }, [items, groupBy]);
@@ -215,6 +246,22 @@ export default function CollapsibleAnnouncementList<T extends { id: string; cate
               >
                 <Layers className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline text-[10px]">Kategorie</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic(8);
+                  setGroupBy('trade');
+                }}
+                className={cn(
+                  'px-2 py-1 rounded-lg transition-all flex items-center gap-1 active:scale-95 touch-manipulation',
+                  groupBy === 'trade' ? 'bg-background text-amber-500 shadow-xs font-black' : 'text-muted-foreground hover:text-foreground'
+                )}
+                title="Grupuj według branży budowlanej (Trade Tags)"
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[10px]">Branże</span>
               </button>
 
               <button

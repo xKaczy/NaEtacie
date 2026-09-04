@@ -256,9 +256,14 @@ export function MobileBottomSheet({
               </div>
             </div>
 
-            {/* Traits Badges (SEP, Benefits, Housing, Transport) */}
+            {/* Traits Badges (Trade Tags, SEP, Benefits, Housing, Transport) */}
             {currentDisplayAd.traits && (
               <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {currentDisplayAd.traits.trade_tags && currentDisplayAd.traits.trade_tags.length > 0 && (
+                  <span className="text-[10px] font-black text-amber-300 bg-amber-950/90 border border-amber-500/40 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-xs">
+                    <Wrench className="w-3 h-3 text-amber-400" /> {currentDisplayAd.traits.trade_tags[0]}
+                  </span>
+                )}
                 {currentDisplayAd.traits.accommodation_provided && (
                   <span className="text-[10px] font-bold text-sky-300 bg-sky-950/80 border border-sky-500/30 px-2 py-0.5 rounded-md flex items-center gap-1">
                     <Home className="w-3 h-3" /> Darmowe zakwaterowanie

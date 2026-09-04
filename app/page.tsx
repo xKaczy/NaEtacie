@@ -228,6 +228,8 @@ function AnnouncementCard({
     'indeed': '#6366f1', // Indigo
     'oferteo': '#f97316', // Orange
     'fixly': '#a855f7', // Purple
+    'bip': '#d97706', // Amber Gold (Municipal / Tender)
+    'bip szczecin': '#d97706',
   };
   
   const portalColor = portalColors[ad.source_portal.toLowerCase()] || '#6b7280';
@@ -316,8 +318,18 @@ function AnnouncementCard({
                           color: portalColor 
                         }}
                       >
-                        {ad.source_portal}
+                        {ad.source_portal === 'bip' ? '🏛️ Przetarg BIP' : ad.source_portal}
                       </span>
+                      {ad.traits?.trade_tags && ad.traits.trade_tags.length > 0 && (
+                        <span 
+                          className="text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-2xs"
+                          title={`Branża: ${ad.traits.trade_tags.join(', ')}`}
+                        >
+                          <Wrench className="w-2.5 h-2.5" />
+                          {ad.traits.trade_tags[0]}
+                          {ad.traits.trade_tags.length > 1 && ` +${ad.traits.trade_tags.length - 1}`}
+                        </span>
+                      )}
                       {ad.is_cross_posted && ad.available_portals && ad.available_portals.length > 1 && (
                         <span 
                           className="text-[9px] font-black tracking-wider uppercase px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 flex items-center gap-1 shadow-2xs"
@@ -473,11 +485,34 @@ function AnnouncementCard({
                     </span>
                   </div>
                   
-                  {priceDisplay && (
-                    <span className="text-xs md:text-sm font-black text-primary bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/10 shadow-sm">
-                      {priceDisplay}
-                    </span>
-                  )}
+                  {(() => {
+                    const parsedSalary = ad.traits?.salary_parsed;
+                    if (parsedSalary && parsedSalary.unit) {
+                      const unitLabels: Record<string, string> = {
+                        hourly: 'zł/h',
+                        daily: 'zł/dzień',
+                        piecework: 'zł/m²',
+                        monthly: 'zł/mc',
+                        project: 'zł zlecenie',
+                      };
+                      const unitStr = unitLabels[parsedSalary.unit] || 'zł';
+                      const rangeStr = parsedSalary.min !== parsedSalary.max && parsedSalary.max
+                        ? `${parsedSalary.min} – ${parsedSalary.max}`
+                        : `${parsedSalary.min ?? ''}`;
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs md:text-sm font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 shadow-xs">
+                            {rangeStr} {unitStr}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return priceDisplay ? (
+                      <span className="text-xs md:text-sm font-black text-primary bg-primary/5 px-2.5 py-1 rounded-lg border border-primary/10 shadow-sm">
+                        {priceDisplay}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             </div>
@@ -573,9 +608,14 @@ function AnnouncementCard({
                   {ad.traits && (
                     <div className="space-y-2 p-3 rounded-xl bg-primary/5 border border-primary/10">
                       <h4 className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
-                        <Wrench className="w-3.5 h-3.5" /> Wyryty sprzęt, certyfikaty i korzyści
+                        <Wrench className="w-3.5 h-3.5" /> Branża, sprzęt, certyfikaty i korzyści
                       </h4>
                       <div className="flex flex-wrap gap-1.5">
+                        {ad.traits.trade_tags?.map((t, i) => (
+                          <span key={`trade-${i}`} className="inline-flex items-center gap-1 text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40">
+                            🏗️ {t}
+                          </span>
+                        ))}
                         {ad.traits.certifications?.map((c, i) => (
                           <span key={i} className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
                             ⚡ {c}
@@ -967,6 +1007,7 @@ export default function HomePage() {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
+  const [selectedTrade, setSelectedTrade] = useState<string | null>(null);
   const [activeCategories, setActiveCategories] = useState<Set<CategoryKey>>(
     () => new Set(ALL_CATEGORY_KEYS)
   );
@@ -1137,6 +1178,16 @@ export default function HomePage() {
       );
     }
 
+    if (selectedTrade) {
+      const tradeLower = selectedTrade.toLowerCase();
+      result = result.filter((a) => {
+        const hasTag = a.traits?.trade_tags?.some((t) => t.toLowerCase() === tradeLower);
+        if (hasTag) return true;
+        const fullText = `${a.title} ${a.description}`.toLowerCase();
+        return fullText.includes(tradeLower);
+      });
+    }
+
     if (minSalary > 0) {
       result = result.filter((a) => {
         const num = extractNumPrice(a.price);
@@ -1193,7 +1244,7 @@ export default function HomePage() {
     }
 
     return result;
-  }, [allAnnouncements, searchQuery, filterPortal, showFavoritesOnly, showTrackedOnly, selectedDistrict, minSalary, commuteRadiusKm, mapBounds, sortBy, isFavorite, getStatus, matchMap, prefsActive]);
+  }, [allAnnouncements, searchQuery, filterPortal, showFavoritesOnly, showTrackedOnly, selectedDistrict, selectedTrade, minSalary, commuteRadiusKm, mapBounds, sortBy, isFavorite, getStatus, matchMap, prefsActive]);
 
   // Memoize map announcements to preserve reference equality across non-search re-renders
   const mapAds = useMemo(() => filteredAds.filter(isSzczecinAnnouncement), [filteredAds]);
@@ -1398,12 +1449,15 @@ export default function HomePage() {
                   onSelectDistrict={setSelectedDistrict}
                   selectedPortal={filterPortal}
                   onSelectPortal={setFilterPortal}
+                  selectedTrade={selectedTrade}
+                  onSelectTrade={setSelectedTrade}
                   minSalary={minSalary}
                   onMinSalaryChange={setMinSalary}
                   commuteKm={commuteRadiusKm}
                   onCommuteKmChange={setCommuteRadiusKm}
                   onResetFilters={() => {
                     setSelectedDistrict(null);
+                    setSelectedTrade(null);
                     setFilterPortal('all');
                     setMinSalary(0);
                     setCommuteRadiusKm(0);
@@ -1528,18 +1582,30 @@ export default function HomePage() {
                     setActiveQuickFilter(null);
                     setSearchQuery('');
                     setSortBy('match');
+                    setFilterPortal('all');
+                    setSelectedTrade(null);
                     setActiveCategories(new Set(ALL_CATEGORY_KEYS));
                     return;
                   }
                   setActiveQuickFilter(filterId);
-                  if (filterId === 'urgent') setSearchQuery('pilne');
+                  if (filterId === 'bip_tenders') {
+                    setFilterPortal('bip');
+                    setSelectedTrade(null);
+                    showToast('info', 'Filtruję przetargi publiczne BIP Szczecin');
+                  } else if (filterId === 'urgent') setSearchQuery('pilne');
                   else if (filterId === 'german_border') setSearchQuery('Niemcy');
                   else if (filterId === 'mega_projects') setSearchQuery('budowa');
                   else if (filterId === 'high_pay') setSortBy('price-desc');
                   else if (filterId === 'today') setSearchQuery('dzisiaj');
-                  else if (filterId === 'finishing') setActiveCategories(new Set(['wykończenia']));
-                  else if (filterId === 'installations') setActiveCategories(new Set(['instalacje']));
-                  else if (filterId === 'near_me') setSearchQuery('Szczecin');
+                  else if (filterId === 'finishing') {
+                    setActiveCategories(new Set(['wykończenia']));
+                    setSelectedTrade('Płytki i glazura');
+                  } else if (filterId === 'installations') {
+                    setActiveCategories(new Set(['instalacje']));
+                    setSelectedTrade('Instalacje wod-kan i CO');
+                  } else if (filterId === 'shell_structure') {
+                    setSelectedTrade('Zbrojarz i betoniarz');
+                  } else if (filterId === 'near_me') setSearchQuery('Szczecin');
                 }}
               />
 
@@ -1728,6 +1794,7 @@ export default function HomePage() {
                         className="w-full h-8 px-2 text-xs font-semibold rounded-lg border border-input bg-background cursor-pointer"
                       >
                         <option value="all">Wszystkie portale</option>
+                        <option value="bip">🏛️ BIP Szczecin (Przetargi)</option>
                         <option value="olx">OLX</option>
                         <option value="pracuj">Pracuj.pl</option>
                         <option value="indeed">Indeed</option>

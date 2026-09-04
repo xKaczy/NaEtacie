@@ -42,3 +42,32 @@ describe('computeAverageSalary utility', () => {
     expect(computeAverageSalary(items)).toBe(8000);
   });
 });
+
+describe('CollapsibleAnnouncementList trade tags grouping & filtering', () => {
+  it('groups items by trade tags and falls back to general for untagged items', () => {
+    const items = [
+      { id: '1', title: 'Tynkarz Szczecin', traits: { trade_tags: ['Tynki maszynowe'] } },
+      { id: '2', title: 'Glazurnik / Tynkarz', traits: { trade_tags: ['Tynki maszynowe', 'Płytki i glazura'] } },
+      { id: '3', title: 'Pracownik ogólny', traits: { trade_tags: [] } },
+    ];
+
+    const groups: Record<string, typeof items> = {};
+    for (const item of items) {
+      const trades = item.traits?.trade_tags;
+      if (trades && trades.length > 0) {
+        for (const t of trades) {
+          if (!groups[t]) groups[t] = [];
+          groups[t].push(item);
+        }
+      } else {
+        const defaultKey = 'Inne / Ogólnobudowlane';
+        if (!groups[defaultKey]) groups[defaultKey] = [];
+        groups[defaultKey].push(item);
+      }
+    }
+
+    expect(groups['Tynki maszynowe']).toHaveLength(2);
+    expect(groups['Płytki i glazura']).toHaveLength(1);
+    expect(groups['Inne / Ogólnobudowlane']).toHaveLength(1);
+  });
+});

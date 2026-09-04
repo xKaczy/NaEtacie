@@ -11,6 +11,7 @@ import {
   Sparkles,
   Map,
   List,
+  RefreshCw,
 } from 'lucide-react';
 import { cn, triggerHaptic } from '@/lib/utils';
 import { playUiSound } from '@/lib/motion/soundEngine';
@@ -21,7 +22,9 @@ export interface FloatingDockProps {
   onOpenAiInterview?: () => void;
   onOpenCommandPalette?: () => void;
   onToggleSplitView?: () => void;
+  onRefresh?: () => void;
   isSplitView?: boolean;
+  activeTab?: string;
 }
 
 export function FloatingDock({
@@ -29,12 +32,18 @@ export function FloatingDock({
   onOpenAiInterview,
   onOpenCommandPalette,
   onToggleSplitView,
+  onRefresh,
   isSplitView = false,
+  activeTab,
 }: FloatingDockProps) {
   const prefersReducedMotion = useReducedMotion();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (activeTab === 'map') {
+      setVisible(false);
+      return;
+    }
     const handleScroll = () => {
       if (window.scrollY > 300) {
         setVisible(true);
@@ -45,7 +54,7 @@ export function FloatingDock({
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [activeTab]);
 
   const scrollToTop = () => {
     triggerHaptic(10);
@@ -146,6 +155,23 @@ export function FloatingDock({
               aria-label="Otwórz paletę komend"
             >
               <Command className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Refresh Offers Trigger */}
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic(12);
+                playUiSound('sparkle');
+                onRefresh();
+              }}
+              className="p-2 rounded-full hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+              title="Odśwież najnowsze ogłoszenia"
+              aria-label="Odśwież oferty"
+            >
+              <RefreshCw className="w-4 h-4 hover:rotate-180 transition-transform duration-300" />
             </button>
           )}
         </motion.div>

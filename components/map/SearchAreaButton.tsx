@@ -7,6 +7,7 @@ export interface SearchAreaButtonProps {
   onClick: () => void;
   ui?: { surface: string; border: string; text: string; shadow: string };
   top?: string | number;
+  className?: string;
 }
 
 /**
@@ -22,7 +23,8 @@ export function SearchAreaButton({
     text: '#1f2937',
     shadow: '0 4px 12px rgba(0,0,0,0.15)',
   },
-  top = '88px',
+  top,
+  className = '',
 }: SearchAreaButtonProps) {
   const handleClick = useCallback(() => {
     onClick();
@@ -30,38 +32,30 @@ export function SearchAreaButton({
 
   if (!visible) return null;
 
+  const isExplicitlyPositioned = top !== undefined;
+
   return (
     <button
       onClick={handleClick}
+      className={`px-4 py-2 rounded-full border text-xs font-bold shadow-lg transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap cursor-pointer touch-manipulation min-h-[40px] ${className}`}
       style={{
-        position: 'absolute',
-        top: typeof top === 'number' ? `${top}px` : top,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 15,
-        padding: '8px 18px',
+        ...(isExplicitlyPositioned
+          ? {
+              position: 'absolute',
+              top: typeof top === 'number' ? `${top}px` : top,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 15,
+            }
+          : {}),
         background: ui.surface,
-        border: `1.5px solid ${ui.border}`,
-        borderRadius: '20px',
+        borderColor: ui.border,
         boxShadow: ui.shadow,
-        fontSize: '13px',
-        fontWeight: 600,
         color: ui.text,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        whiteSpace: 'nowrap',
-        transition: 'all 0.2s cubic-bezier(0.34,1.56,0.64,1)',
-      }}
-      onMouseDown={(e) => {
-        (e.currentTarget as HTMLElement).style.transform = 'translateX(-50%) scale(0.95)';
-      }}
-      onMouseUp={(e) => {
-        (e.currentTarget as HTMLElement).style.transform = 'translateX(-50%)';
       }}
     >
-      🔍 Szukaj w tym obszarze
+      <span>🔍</span>
+      <span>Szukaj w tym obszarze</span>
     </button>
   );
 }

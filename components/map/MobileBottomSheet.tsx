@@ -51,9 +51,9 @@ export interface MobileBottomSheetProps {
 export type SheetSnapState = 'collapsed' | 'medium' | 'expanded';
 
 const SNAP_HEIGHTS: Record<SheetSnapState, string> = {
-  collapsed: '54px',
+  collapsed: '62px',
   medium: '44vh',
-  expanded: '76vh',
+  expanded: '78vh',
 };
 
 export function MobileBottomSheet({
@@ -90,11 +90,11 @@ export function MobileBottomSheet({
   const handleDragEnd = (_: unknown, info: PanInfo) => {
     const { offset, velocity } = info;
 
-    if (velocity.y < -180 || offset.y < -35) {
+    if (velocity.y < -160 || offset.y < -30) {
       triggerHaptic(12);
       if (snapState === 'collapsed') updateSnapState('medium');
       else if (snapState === 'medium') updateSnapState('expanded');
-    } else if (velocity.y > 180 || offset.y > 35) {
+    } else if (velocity.y > 160 || offset.y > 30) {
       triggerHaptic(12);
       if (snapState === 'expanded') updateSnapState('medium');
       else if (snapState === 'medium') updateSnapState('collapsed');
@@ -147,9 +147,9 @@ export function MobileBottomSheet({
     <motion.div
       drag="y"
       dragConstraints={{ top: 0, bottom: 0 }}
-      dragElastic={0.2}
+      dragElastic={0.15}
       onDragEnd={handleDragEnd}
-      className="fixed bottom-[58px] left-0 right-0 md:left-auto md:right-8 md:bottom-4 md:w-[420px] z-30 flex flex-col rounded-t-3xl md:rounded-3xl shadow-2xl border border-emerald-500/20 backdrop-blur-2xl transition-all duration-300 touch-none bg-slate-950/95 text-slate-100 ring-1 ring-white/10"
+      className="fixed bottom-[72px] pb-[env(safe-area-inset-bottom,0px)] left-0 right-0 md:hidden z-30 flex flex-col rounded-t-3xl shadow-2xl border-t border-x border-emerald-500/25 backdrop-blur-2xl transition-all duration-300 bg-slate-950/95 text-slate-100 ring-1 ring-white/10"
       style={{
         height: SNAP_HEIGHTS[snapState],
       }}
@@ -158,11 +158,11 @@ export function MobileBottomSheet({
     >
       {/* ── Tactile Grip Header (Drag Handle) ── */}
       <div
-        className="w-full flex flex-col items-center pt-2.5 pb-2 cursor-grab active:cursor-grabbing touch-none select-none shrink-0 group border-b border-white/10 bg-slate-900/50"
+        className="w-full flex flex-col items-center pt-2 pb-2 min-h-[48px] cursor-grab active:cursor-grabbing touch-none select-none shrink-0 group border-b border-white/10 bg-slate-900/60"
         onClick={toggleSnap}
       >
-        <div className="flex items-center justify-center w-14 h-1.5 rounded-full bg-slate-700 group-hover:bg-emerald-400 group-active:scale-110 transition-all mb-2">
-          <GripHorizontal className="w-3.5 h-3.5 text-slate-400 opacity-60" />
+        <div className="flex items-center justify-center w-14 h-1.5 rounded-full bg-slate-600 group-hover:bg-emerald-400 group-active:scale-110 transition-all mb-1.5">
+          <GripHorizontal className="w-3.5 h-3.5 text-slate-400 opacity-75" />
         </div>
         <div className="flex items-center justify-between w-full px-4 text-xs font-bold text-slate-300">
           <span className="flex items-center gap-1.5">
@@ -205,7 +205,7 @@ export function MobileBottomSheet({
                   triggerHaptic(15);
                   onToggleFavorite(currentDisplayAd.id);
                 }}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-red-400 transition-transform active:scale-90 cursor-pointer min-h-[40px] min-w-[40px] flex items-center justify-center"
+                className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-red-400 transition-transform active:scale-90 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
                 aria-label="Dodaj do ulubionych"
               >
                 <Heart
@@ -275,10 +275,10 @@ export function MobileBottomSheet({
                   href={`https://www.google.com/maps/dir/?api=1&destination=${nearest.supplier.lat},${nearest.supplier.lng}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-bold hover:bg-amber-500/20 transition-colors"
+                  className="min-h-[44px] flex items-center justify-between px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-bold hover:bg-amber-500/20 transition-colors touch-manipulation"
                 >
                   <span className="flex items-center gap-1.5 truncate">
-                    <span className="text-sm">🏪</span>
+                    <span className="text-base">🏪</span>
                     <span className="truncate">Zaopatrzenie: <strong>{nearest.supplier.name}</strong></span>
                   </span>
                   <span className="text-amber-400 shrink-0 font-mono text-[10px] bg-amber-950/60 px-2 py-0.5 rounded-lg border border-amber-500/20">
@@ -295,19 +295,19 @@ export function MobileBottomSheet({
                   <a
                     href={`tel:+48${phoneDigits}`}
                     onClick={() => triggerHaptic(20)}
-                    className="min-h-[44px] py-2 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-emerald-400/40"
-                    title="Zadzwoń do majstra"
+                    className="min-h-[44px] py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-emerald-400/40 touch-manipulation"
+                    title="Zadzwoń do pracodawcy"
                   >
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-4 h-4 shrink-0" />
                     <span>Zadzwoń</span>
                   </a>
                   <a
                     href={getQuickSmsHref({ phone: currentDisplayAd.phone, title: currentDisplayAd.title, district: currentDisplayAd.location_text }) || `sms:+48${phoneDigits}`}
                     onClick={() => triggerHaptic(15)}
-                    className="min-h-[44px] py-2 px-2.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-sky-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-sky-400/40"
+                    className="min-h-[44px] py-2.5 px-3 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-sky-950/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-sky-400/40 touch-manipulation"
                     title="Wyślij gotowy SMS zgłoszeniowy bez pisania"
                   >
-                    <MessageSquare className="w-4 h-4" />
+                    <MessageSquare className="w-4 h-4 shrink-0" />
                     <span>Szybki SMS</span>
                   </a>
                 </>
@@ -317,9 +317,9 @@ export function MobileBottomSheet({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => triggerHaptic(15)}
-                  className="col-span-2 sm:col-span-1 min-h-[44px] py-2 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-emerald-400/40"
+                  className="col-span-2 sm:col-span-1 min-h-[44px] py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-emerald-400/40 touch-manipulation"
                 >
-                  <MessageSquare className="w-4 h-4" />
+                  <MessageSquare className="w-4 h-4 shrink-0" />
                   <span>Napisz SMS</span>
                 </a>
               )}
@@ -330,10 +330,10 @@ export function MobileBottomSheet({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => triggerHaptic(15)}
-                  className="min-h-[44px] py-2 px-2.5 bg-pink-700 hover:bg-pink-600 text-white font-extrabold text-xs rounded-xl shadow-md shadow-pink-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-pink-400/40"
+                  className="min-h-[44px] py-2.5 px-3 bg-pink-700 hover:bg-pink-600 active:bg-pink-800 text-white font-extrabold text-xs rounded-xl shadow-md shadow-pink-950/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-pink-400/40 touch-manipulation"
                   title="Dojazd tramwajem / autobusem ZDiTM Szczecin na 6:30 rano"
                 >
-                  <Bus className="w-4 h-4" />
+                  <Bus className="w-4 h-4 shrink-0" />
                   <span>ZDiTM 6:30</span>
                 </a>
               ) : (
@@ -342,9 +342,9 @@ export function MobileBottomSheet({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => triggerHaptic(15)}
-                  className="min-h-[44px] py-2 px-2.5 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-blue-400/40"
+                  className="min-h-[44px] py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-950/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-blue-400/40 touch-manipulation"
                 >
-                  <Navigation className="w-4 h-4" />
+                  <Navigation className="w-4 h-4 shrink-0" />
                   <span>Trasa GPS</span>
                 </a>
               )}
@@ -354,10 +354,10 @@ export function MobileBottomSheet({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => triggerHaptic(15)}
-                className="col-span-2 sm:col-span-1 min-h-[44px] py-2 px-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-amber-950/40 flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer border border-amber-300"
+                className="col-span-2 sm:col-span-1 min-h-[44px] py-2.5 px-3 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-amber-950/40 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer border border-amber-300 touch-manipulation"
               >
                 <span>Otwórz</span>
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink className="w-4 h-4 shrink-0" />
               </a>
             </div>
           </div>

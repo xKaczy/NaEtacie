@@ -28,7 +28,7 @@ import { MapWeatherWidget } from './MapWeatherWidget';
 import { calculateCommuteEstimate } from './MapCommuteRoute';
 import { getDistrictSalaryGeoJson } from './MapDistrictSalaryHeatmap';
 import { triggerHaptic, formatShortPrice, ensureAbsoluteUrl, getAnnouncementExternalUrl } from '@/lib/utils';
-import { isPointInPolygon } from './utils';
+import { isPointInPolygon, generateSpiderfyPositions, createGeoJsonCircle, isValidCoordinate, sanitizeFeatureCollection } from './utils';
 import { MapConstructionSites } from './MapConstructionSites';
 import { MapTransitStops } from './MapTransitStops';
 import { MapPogonSzczecin, POGON_STADIUM_COORDS } from './MapPogonSzczecin';
@@ -37,12 +37,13 @@ import { findNearestSupplier, SZCZECIN_CONSTRUCTION_SUPPLIERS, type Construction
 import { isJobWithinRadar, loadSavedHomeBase, saveHomeBase } from '@/lib/geo/homeBaseRadar';
 import { MapSuppliersModal } from './MapSuppliersModal';
 import { MapHomeRadarModal } from './MapHomeRadarModal';
-import { SZCZECIN_LANDMARKS_3D, type SzczecinLandmark3D } from '@/lib/geo/szczecinLandmarks3D';
+import { SZCZECIN_LANDMARKS_3D, getSzczecinLandmarks3DPolygonsGeoJson, type SzczecinLandmark3D } from '@/lib/geo/szczecinLandmarks3D';
 import { LandmarkDetailModal } from './LandmarkDetailModal';
 import { applySunlightToMap, type SunlightMode } from '@/lib/geo/sunlightEngine';
+import { MarkerPopup } from './MarkerPopup';
+import { getMarkerHtml } from './markerUtils';
+import { CategoryFilter } from './CategoryFilterBar';
 
-
-// ═══════════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════════
 
@@ -70,18 +71,29 @@ const MAP_STYLES: Record<MapStyleType, string> = {
     : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
 };
 
-/** Raster tile fallback when vector style fails to load */
+/** Resilient raster tile fallback when vector style fails to load */
 const FALLBACK_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
     'osm-raster': {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: [
+        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      ],
       tileSize: 256,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     },
   },
   layers: [
+    {
+      id: 'fallback-background',
+      type: 'background',
+      paint: {
+        'background-color': '#e2e8f0',
+      },
+    },
     {
       id: 'osm-tiles',
       type: 'raster',
@@ -106,612 +118,7 @@ const UI = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// GEOMETRY & SPIDERFY UTILITIES
-// ═══════════════════════════════════════════════════════════════════
 
-function createGeoJsonCircle(center: [number, number], radiusKm: number, points = 64) {
-  const [lng, lat] = center;
-  const coords = [];
-  const distanceX = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
-  const distanceY = radiusKm / 110.574;
-
-  for (let i = 0; i < points; i++) {
-    const theta = (i / points) * (2 * Math.PI);
-    const x = distanceX * Math.cos(theta);
-    const y = distanceY * Math.sin(theta);
-    coords.push([lng + x, lat + y]);
-  }
-  coords.push(coords[0]);
-
-  return {
-    type: 'Feature' as const,
-    geometry: {
-      type: 'Polygon' as const,
-      coordinates: [coords],
-    },
-    properties: {},
-  };
-}
-
-/**
- * Calculates spiderfy positions for multiple overlapping pins at the same location.
- * Spreads pins along a spiral or circle ring around the origin center.
- */
-function generateSpiderfyPositions(center: [number, number], count: number, zoom: number): Array<[number, number]> {
-  if (count <= 1) return [center];
-
-  const [lng, lat] = center;
-  const positions: Array<[number, number]> = [];
-  const pixelRadius = 38; 
-  const metersPerPixel = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
-  const radiusKm = (pixelRadius * metersPerPixel) / 1000;
-
-  const distanceX = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
-  const distanceY = radiusKm / 110.574;
-
-  const angleStep = (2 * Math.PI) / count;
-
-  for (let i = 0; i < count; i++) {
-    const angle = i * angleStep;
-    const rMult = count > 8 ? 1 + (i * 0.12) : 1;
-    const x = lng + distanceX * Math.cos(angle) * rMult;
-    const y = lat + distanceY * Math.sin(angle) * rMult;
-    positions.push([x, y]);
-  }
-
-  return positions;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// HIGH-VIS TACTICAL JOB PILL GENERATOR (BALTIC SLATE HUD)
-// ═══════════════════════════════════════════════════════════════════
-
-function getMarkerHtml(
-  category: string,
-  isFavorite: boolean,
-  isSelected: boolean,
-  dimmed: boolean = false,
-  price?: string | number | null,
-  isUrgent: boolean = false,
-  isFresh: boolean = false
-): string {
-  const cat = CATEGORIES[normalizeCategory(category)];
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  const shortPrice = price ? formatShortPrice(price) : null;
-
-  const numPrice = typeof price === 'number'
-    ? price
-    : (typeof price === 'string' ? parseFloat(price.replace(/[^\d.]/g, '')) : null);
-
-  // Hourly or monthly salary threshold against Szczecin median (45 zł/h or 7500 zł/mc)
-  const isHighPay = numPrice !== null && ((numPrice >= 45 && numPrice <= 300) || numPrice >= 7500);
-  const isMidPay = !isHighPay && numPrice !== null && ((numPrice >= 30 && numPrice < 45) || numPrice >= 5000);
-
-  // Tactical heat-bar colors
-  const heatColor = isUrgent ? '#ef4444' : isHighPay ? '#10b981' : isMidPay ? '#f59e0b' : '#64748b';
-  const borderColor = isSelected ? '#38bdf8' : isUrgent ? '#ef4444' : isHighPay ? '#10b981' : '#334155';
-  const glowShadow = isSelected
-    ? '0 0 16px rgba(56, 189, 248, 0.65), 0 4px 16px rgba(0,0,0,0.7)'
-    : isUrgent
-    ? '0 0 14px rgba(239, 68, 68, 0.55), 0 4px 14px rgba(0,0,0,0.6)'
-    : isHighPay
-    ? '0 0 12px rgba(16, 185, 129, 0.45), 0 4px 12px rgba(0,0,0,0.6)'
-    : '0 4px 12px rgba(0,0,0,0.5)';
-
-  const opacity = dimmed ? '0.35' : '1';
-  const scale = isSelected ? 'scale(1.15)' : 'scale(1)';
-
-  // Sonar Wave for fresh offers (<6h), urgent offers, or selected
-  const sonarRing = (isSelected || isFresh || isUrgent)
-    ? `<div class="sonar-wave-pulse" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${isMobile ? '38px' : '48px'};height:${isMobile ? '38px' : '48px'};border-radius:50%;background:${isUrgent ? 'rgba(239,68,68,0.25)' : isSelected ? 'rgba(56,189,248,0.3)' : 'rgba(16,185,129,0.25)'};border:1.5px solid ${heatColor};animation:sonar-wave 2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;pointer-events:none;"></div>`
-    : '';
-
-  // Top micro tag (CITO / TOP / NOWE)
-  const tagHtml = isUrgent
-    ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#dc2626;color:#ffffff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:4px;letter-spacing:0.04em;box-shadow:0 1px 4px rgba(220,38,38,0.6);white-space:nowrap;border:1px solid #f87171;z-index:3;">CITO</span>`
-    : isHighPay
-    ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#059669;color:#ffffff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:4px;letter-spacing:0.04em;box-shadow:0 1px 4px rgba(5,150,105,0.6);white-space:nowrap;border:1px solid #34d399;z-index:3;">TOP</span>`
-    : isFresh
-    ? `<span style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#0284c7;color:#ffffff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:4px;letter-spacing:0.04em;box-shadow:0 1px 4px rgba(2,132,199,0.6);white-space:nowrap;border:1px solid #38bdf8;z-index:3;">NOWE</span>`
-    : '';
-
-  // Heart badge for favorites
-  const heartBadge = isFavorite
-    ? `<div style="position:absolute;top:-4px;right:-5px;width:13px;height:13px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:50%;border:1.5px solid white;display:flex;align-items:center;justify-content:center;font-size:7px;line-height:1;color:white;box-shadow:0 1px 4px rgba(239,68,68,0.6);z-index:4;">♥</div>`
-    : '';
-
-  const pillPad = isMobile ? '2px 7px 2px 4px' : '3px 9px 3px 5px';
-  const iconSize = isMobile ? '11px' : '13px';
-  const priceFontSize = isMobile ? '9.5px' : '11px';
-
-  return `
-    <div style="position:relative;display:flex;flex-direction:column;align-items:center;cursor:pointer;user-select:none;transform:${scale};transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1);opacity:${opacity};">
-      ${sonarRing}
-      ${tagHtml}
-      ${heartBadge}
-      
-      <!-- Tactical Job Pill Body -->
-      <div style="display:flex;align-items:center;gap:4.5px;background:rgba(9,13,22,0.92);backdrop-filter:blur(8px);border:1.5px solid ${borderColor};border-radius:999px;box-shadow:${glowShadow};padding:${pillPad};position:relative;z-index:2;">
-        <!-- Left Heat Bar -->
-        <div style="width:3.5px;height:12px;border-radius:2px;background:${heatColor};box-shadow:0 0 6px ${heatColor};shrink:0;"></div>
-        
-        <!-- Category Icon -->
-        <span style="font-size:${iconSize};line-height:1;display:flex;align-items:center;">${cat.icon}</span>
-        
-        <!-- Price Label -->
-        <span style="font-size:${priceFontSize};font-weight:800;color:#f8fafc;letter-spacing:-0.02em;white-space:nowrap;">${shortPrice || 'Wycena'}</span>
-      </div>
-
-      <!-- Downward Pointing Tactical Needle -->
-      <div style="width:0;height:0;border-left:4.5px solid transparent;border-right:4.5px solid transparent;border-top:5.5px solid ${borderColor};margin-top:-1px;filter:drop-shadow(0 2px 3px rgba(0,0,0,0.5));position:relative;z-index:1;"></div>
-    </div>
-  `;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// FLOATING INTERFACE COMPONENTS
-// ═══════════════════════════════════════════════════════════════════
-
-function ControlButton({
-  onClick, title, ariaLabel, top, ui, children,
-}: {
-  onClick: () => void;
-  title: string;
-  ariaLabel: string;
-  top: number;
-  ui: typeof UI.light;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      aria-label={ariaLabel}
-      className="w-7 h-7 text-[10px] md:w-9 md:h-9 md:text-base rounded-lg transition-transform active:scale-90 shadow-sm"
-      style={{
-        position: 'absolute',
-        top: `calc(${top}px + 44px)`,
-        right: '10px',
-        zIndex: 10,
-        background: ui.surface,
-        border: `1px solid ${ui.border}`,
-        boxShadow: ui.shadow,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: ui.text,
-      }}
-      onMouseDown={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.92)'; }}
-      onMouseUp={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function MapStats({ ads, total, visible, ui, isDark }: {
-  ads: DisplayAnnouncement[]; total: number; visible: number; ui: typeof UI.light; isDark: boolean;
-}) {
-  const avgPrice = useMemo(() => {
-    const prices = ads.filter(a => typeof a.price === 'number' && a.price > 0).map(a => a.price as number);
-    if (prices.length === 0) return null;
-    return Math.round(prices.reduce((s, p) => s + p, 0) / prices.length);
-  }, [ads]);
-
-  const newestLabel = useMemo(() => {
-    const dates = ads.map(a => a.scraped_at).filter(Boolean).sort((a, b) => b.getTime() - a.getTime());
-    if (dates.length === 0) return null;
-    const diffH = Math.floor((Date.now() - dates[0].getTime()) / 3600000);
-    if (diffH < 1) return 'przed chwilą';
-    if (diffH < 24) return `${diffH}h temu`;
-    return `${Math.floor(diffH / 24)}d temu`;
-  }, [ads]);
-
-  const catCounts = useMemo(() =>
-    ALL_CATEGORY_KEYS
-      .map(k => ({ key: k, count: ads.filter(a => normalizeCategory(a.category) === k).length, color: CATEGORIES[k].color }))
-      .filter(c => c.count > 0),
-  [ads]);
-
-  return (
-    <div
-      className="hidden md:flex flex-col gap-1 text-xs backdrop-blur-md rounded-xl p-2.5 shadow-md pointer-events-none max-w-[220px]"
-      style={{
-        position: 'absolute', bottom: '116px', left: '10px', zIndex: 10,
-        background: ui.surfaceAlpha, border: `1px solid ${ui.border}`,
-        color: ui.text,
-      }}
-    >
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
-          <strong>{visible}</strong>
-          <span style={{ color: ui.textMuted }}>widoczne w Szczecinie</span>
-        </span>
-        <span style={{ color: ui.border }}>│</span>
-        <span style={{ color: ui.textMuted }}>{total} łącznie</span>
-      </div>
-      {(avgPrice !== null || newestLabel) && (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {avgPrice !== null && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-              <span>💰</span>
-              <span style={{ fontWeight: 600 }}>~{avgPrice.toLocaleString('pl-PL')} zł</span>
-            </span>
-          )}
-          {newestLabel && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: ui.textMuted }}>
-              <span>🕐</span>
-              <span>{newestLabel}</span>
-            </span>
-          )}
-        </div>
-      )}
-      {catCounts.length > 0 && (
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          {catCounts.map(c => (
-            <span key={c.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-              <span style={{
-                width: '8px', height: '8px', borderRadius: '50%', background: c.color, display: 'inline-block',
-                border: `1px solid ${isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)'}`,
-              }} />
-              <span style={{ fontWeight: 600, fontSize: '10px' }}>{c.count}</span>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CategoryFilter({
-  active, onChange, ui, top = 50,
-}: {
-  active: Set<CategoryKey>;
-  onChange: (cats: Set<CategoryKey>) => void;
-  ui: typeof UI.light;
-  top?: number;
-}) {
-  const allSelected = active.size === ALL_CATEGORY_KEYS.length;
-
-  return (
-    <div
-      className="hidden md:flex no-scrollbar"
-      style={{
-        position: 'absolute', top: `${top}px`, left: '10px', right: '110px', zIndex: 20,
-        gap: '4px', overflowX: 'auto', paddingBottom: '2px',
-      }}
-    >
-      <button
-        onClick={() => onChange(allSelected ? new Set() : new Set(ALL_CATEGORY_KEYS))}
-        style={{
-          flexShrink: 0, padding: '6px 12px', borderRadius: '20px',
-          border: `1.5px solid ${ui.border}`, background: ui.surfaceAlpha, backdropFilter: 'blur(6px)',
-          color: ui.textMuted, fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-          boxShadow: ui.shadow, whiteSpace: 'nowrap',
-        }}
-      >
-        {allSelected ? 'Odznacz wszystko' : 'Wybierz wszystko'}
-      </button>
-      {ALL_CATEGORY_KEYS.map((key) => {
-        const cat = CATEGORIES[key];
-        const isActive = active.has(key);
-        return (
-          <button
-            key={key}
-            onClick={() => {
-              const next = new Set(active);
-              if (isActive) next.delete(key); else next.add(key);
-              onChange(next);
-            }}
-            style={{
-              flexShrink: 0, pointerEvents: 'auto', padding: '6px 13px', borderRadius: '20px',
-              border: `1.5px solid ${isActive ? cat.color : ui.border}`,
-              background: isActive ? `${cat.color}20` : ui.surfaceAlpha,
-              backdropFilter: 'blur(6px)',
-              color: isActive ? cat.color : ui.textMuted,
-              fontSize: '12px', fontWeight: isActive ? 700 : 500, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap',
-              boxShadow: ui.shadow, transition: 'all 0.15s ease',
-            }}
-          >
-            <span>{cat.icon}</span>
-            <span>{cat.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// POPUP CONTENT COMPONENT
-// ═══════════════════════════════════════════════════════════════════
-
-function MarkerPopup({
-  ad, isFavorite, onToggleFavorite, onShowInList, isDark, homeLat, homeLng,
-}: {
-  ad: DisplayAnnouncement;
-  isFavorite: boolean;
-  onToggleFavorite: () => void;
-  onShowInList: () => void;
-  isDark: boolean;
-  homeLat?: number | null;
-  homeLng?: number | null;
-}) {
-  const cat = CATEGORIES[normalizeCategory(ad.category)];
-  const priceDisplay = ad.price
-    ? (typeof ad.price === 'number' ? `${ad.price.toLocaleString('pl-PL')} zł${ad.price < 500 ? '/m²' : ''}` : ad.price)
-    : null;
-
-  const distKm = useMemo(() => {
-    if (homeLat != null && homeLng != null && ad.latitude != null && ad.longitude != null) {
-      const d = haversineKm(homeLat, homeLng, ad.latitude, ad.longitude);
-      return Math.round(d * 10) / 10;
-    }
-    return null;
-  }, [homeLat, homeLng, ad.latitude, ad.longitude]);
-
-  const estDriveMin = distKm != null ? Math.max(2, Math.round((distKm / 35) * 60)) : null;
-  const nearestSupplier = findNearestSupplier(ad.latitude, ad.longitude);
-
-  const bg = isDark ? '#09090b' : '#ffffff';
-  const textPrimary = isDark ? '#f4f4f5' : '#111827';
-  const textMuted = isDark ? '#a1a1aa' : '#6b7280';
-  const chipBg = isDark ? 'rgba(39,39,42,0.85)' : 'rgba(244,244,245,0.95)';
-  const divider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-
-  return (
-    <div style={{
-      minWidth: '240px', maxWidth: '280px',
-      fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
-      background: bg, overflow: 'hidden', borderRadius: '12px',
-      boxShadow: '0 12px 36px rgba(0,0,0,0.35)',
-      border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`,
-    }}>
-
-      {/* ── Category Header Bar ── */}
-      <div style={{
-        background: `linear-gradient(135deg, ${cat.color}25 0%, ${cat.color}08 100%)`,
-        borderBottom: `1px solid ${cat.color}35`,
-        padding: '8px 12px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: '5px',
-          padding: '3px 8px', borderRadius: '999px',
-          background: `${cat.color}20`, border: `1px solid ${cat.color}45`,
-          color: cat.color, fontSize: '10px', fontWeight: 800, letterSpacing: '0.04em',
-        }}>
-          <span style={{ fontSize: '12px' }}>{cat.icon}</span>
-          {cat.label.toUpperCase()}
-        </span>
-        <button
-          onClick={onToggleFavorite}
-          aria-label={isFavorite ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
-          style={{
-            border: 'none', background: isFavorite ? 'rgba(239,68,68,0.15)' : 'transparent',
-            cursor: 'pointer', fontSize: '15px', lineHeight: 1, padding: '4px 6px',
-            borderRadius: '6px', color: isFavorite ? '#ef4444' : textMuted,
-            transition: 'all 0.2s ease',
-          }}
-        >
-          {isFavorite ? '♥' : '♡'}
-        </button>
-      </div>
-
-      {/* ── Main Content ── */}
-      <div style={{ padding: '10px 12px' }}>
-        <h3 style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 800, lineHeight: 1.3, color: textPrimary }}>
-          {ad.title}
-        </h3>
-
-        {ad.description && (
-          <p style={{
-            margin: '0 0 8px', fontSize: '11px', color: textMuted, lineHeight: 1.4,
-            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          }}>
-            {ad.description}
-          </p>
-        )}
-
-        {/* ── Info chips ── */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
-          <span style={{
-            fontSize: '10px', background: chipBg, color: textPrimary,
-            padding: '3px 8px', borderRadius: '999px', fontWeight: 600,
-            display: 'inline-flex', alignItems: 'center', gap: '4px',
-          }}>
-            <span>📍</span> {ad.location_text}
-          </span>
-          {distKm != null && (
-            <span style={{
-              fontSize: '10px', background: isDark ? 'rgba(16,185,129,0.18)' : '#d1fae5',
-              color: isDark ? '#34d399' : '#047857',
-              border: `1px solid ${isDark ? 'rgba(16,185,129,0.35)' : '#a7f3d0'}`,
-              padding: '3px 8px', borderRadius: '999px', fontWeight: 700,
-              display: 'inline-flex', alignItems: 'center', gap: '4px',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              <span>🚗</span> {distKm} km (~{estDriveMin}m)
-            </span>
-          )}
-          {priceDisplay && (
-            <span style={{
-              fontSize: '10px', padding: '3px 8px', borderRadius: '999px', fontWeight: 800,
-              background: isDark ? 'rgba(16,185,129,0.2)' : '#ecfdf5',
-              color: isDark ? '#10b981' : '#059669',
-              border: `1px solid ${isDark ? 'rgba(16,185,129,0.4)' : '#a7f3d0'}`,
-              display: 'inline-flex', alignItems: 'center', gap: '4px',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              <span>💰</span> {priceDisplay}
-            </span>
-          )}
-          {nearestSupplier && (
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${nearestSupplier.supplier.lat},${nearestSupplier.supplier.lng}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={`Nawiguj do marketu budowlanego: ${nearestSupplier.supplier.name} (${nearestSupplier.supplier.address})`}
-              style={{
-                fontSize: '10px', background: isDark ? 'rgba(245,158,11,0.18)' : '#fef3c7',
-                color: isDark ? '#fbbf24' : '#b45309',
-                border: `1px solid ${isDark ? 'rgba(245,158,11,0.35)' : '#fde68a'}`,
-                padding: '3px 8px', borderRadius: '999px', fontWeight: 700,
-                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                textDecoration: 'none',
-              }}
-            >
-              <span>🏪</span> {nearestSupplier.supplier.name} ({nearestSupplier.distanceKm} km • ~{nearestSupplier.driveTimeMinutes}m)
-            </a>
-          )}
-        </div>
-
-        {/* ── Phone & 1-Tap Quick SMS ── */}
-        {ad.phone && (
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
-            <a href={`tel:${ad.phone.replace(/\s+/g, '')}`} style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-              padding: '7px 8px',
-              background: isDark ? 'rgba(16,185,129,0.18)' : 'rgba(220,252,231,0.95)',
-              border: `1px solid ${isDark ? 'rgba(16,185,129,0.4)' : '#86efac'}`,
-              borderRadius: '8px', fontSize: '11px', color: isDark ? '#34d399' : '#15803d',
-              fontWeight: 800, textDecoration: 'none', fontVariantNumeric: 'tabular-nums',
-            }}>
-              <span>📞</span> Zadzwoń
-            </a>
-            <a
-              href={getQuickSmsHref({ phone: ad.phone, title: ad.title, district: ad.location_text }) || `sms:${ad.phone}`}
-              style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                padding: '7px 8px',
-                background: isDark ? 'rgba(59,130,246,0.18)' : 'rgba(219,234,254,0.95)',
-                border: `1px solid ${isDark ? 'rgba(59,130,246,0.4)' : '#93c5fd'}`,
-                borderRadius: '8px', fontSize: '11px', color: isDark ? '#60a5fa' : '#1d4ed8',
-                fontWeight: 800, textDecoration: 'none',
-              }}
-            >
-              <span>💬</span> Szybki SMS
-            </a>
-          </div>
-        )}
-
-        {/* ── Divider ── */}
-        <div style={{ height: '1px', background: divider, marginBottom: '8px' }} />
-
-        {/* ── Action Buttons ── */}
-        <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-          <button
-            onClick={onShowInList}
-            style={{
-              flex: 1, textAlign: 'center', padding: '6px 8px',
-              background: chipBg, color: textPrimary,
-              border: `1px solid ${divider}`,
-              borderRadius: '8px', fontSize: '10px', fontWeight: 700,
-              cursor: 'pointer', transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = isDark ? '#27272a' : '#e4e4e7'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = chipBg; }}
-          >
-            📋 Na liście
-          </button>
-          <a
-            href={getAnnouncementExternalUrl(ad)}
-            target="_blank"
-            rel="noopener noreferrer"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              flex: 1, textAlign: 'center', padding: '6px 8px',
-              background: `linear-gradient(135deg, ${cat.color}, ${cat.color}dd)`,
-              color: 'white', borderRadius: '8px', fontSize: '10px',
-              fontWeight: 800, textDecoration: 'none',
-              boxShadow: `0 2px 8px ${cat.color}50`,
-              cursor: 'pointer',
-            }}
-          >
-            Otwórz →
-          </a>
-        </div>
-
-        {/* ── Commute & Navigation ── */}
-        {ad.latitude != null && ad.longitude != null && (
-          <div style={{ display: 'flex', gap: '5px' }}>
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${ad.latitude},${ad.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Dojazd samochodem"
-              style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-                padding: '5px 4px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
-                textDecoration: 'none', color: isDark ? '#93c5fd' : '#1d4ed8',
-                background: isDark ? 'rgba(30,41,59,0.7)' : 'rgba(241,245,249,0.9)',
-                border: `1px solid ${isDark ? '#334155' : '#cbd5e1'}`,
-                transition: 'opacity 0.15s ease',
-              }}
-            >
-              🚗 Auto
-            </a>
-            <a
-              href={getZditmTransitUrl(ad.latitude, ad.longitude)}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Dojazd tramwajem / autobusem ZDiTM Szczecin na 6:30 rano"
-              style={{
-                flex: 1.2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-                padding: '5px 4px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
-                textDecoration: 'none', color: isDark ? '#f472b6' : '#be185d',
-                background: isDark ? 'rgba(80,7,36,0.35)' : 'rgba(253,242,248,0.95)',
-                border: `1px solid ${isDark ? '#831843' : '#fbcfe8'}`,
-                transition: 'opacity 0.15s ease',
-              }}
-            >
-              🚌 ZDiTM 6:30
-            </a>
-            <a
-              href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ad.latitude},${ad.longitude}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Zobacz widok sferyczny Google Street View"
-              style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px',
-                padding: '5px 4px', borderRadius: '8px', fontSize: '10px', fontWeight: 700,
-                textDecoration: 'none', color: isDark ? '#34d399' : '#047857',
-                background: isDark ? 'rgba(6,78,59,0.25)' : 'rgba(209,250,229,0.9)',
-                border: `1px solid ${isDark ? 'rgba(52,211,153,0.3)' : '#a7f3d0'}`,
-                transition: 'opacity 0.15s ease',
-              }}
-            >
-              🌐 Widok
-            </a>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// CAROUSEL OF OFFERS
-// ═══════════════════════════════════════════════════════════════════
-
-interface ResultsCarouselProps {
-  ads: DisplayAnnouncement[];
-  selectedId: string | null;
-  ui: typeof UI.light;
-  isDark: boolean;
-  isFavorite: (id: string) => boolean;
-  onSelect: (id: string) => void;
-}
-
-function ResultsCarousel(_props: ResultsCarouselProps) {
-  return null;
-}
 
 function EmptyOverlay({ ui, hasAny, onReset }: { ui: typeof UI.light; hasAny: boolean; onReset?: () => void }) {
   return (
@@ -760,6 +167,8 @@ export interface MapViewProps {
   isFavorite: (id: string) => boolean;
   onToggleFavorite: (id: string) => void;
   selectedId?: string | null;
+  hoveredId?: string | null;
+  onMarkerHover?: (id: string | null) => void;
   flyToken?: number;
   onMarkerClick?: (id: string) => void;
   onShowInList?: (id: string) => void;
@@ -780,6 +189,8 @@ export default function MapView({
   isFavorite,
   onToggleFavorite,
   selectedId = null,
+  hoveredId = null,
+  onMarkerHover,
   flyToken = 0,
   onMarkerClick,
   onShowInList,
@@ -794,10 +205,22 @@ export default function MapView({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const homeMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const popupRootsRef = useRef<Map<string, Root>>(new Map());
+  const activePopupRootRef = useRef<{ id: string; root: Root } | null>(null);
   const spiderMarkersRef = useRef<maplibregl.Marker[]>([]);
   const geoMarkerRef = useRef<maplibregl.Marker | null>(null);
   const isDarkRef = useRef(false);
+
+  const cleanupActivePopupRoot = useCallback(() => {
+    if (activePopupRootRef.current) {
+      const { root } = activePopupRootRef.current;
+      activePopupRootRef.current = null;
+      try {
+        root.unmount();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
 
   const [isDark, setIsDark] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyleType>('emerald');
@@ -808,6 +231,35 @@ export default function MapView({
   const [moved, setMoved] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [tilesLoading, setTilesLoading] = useState(true);
+  const [mapEpoch, setMapEpoch] = useState(0);
+  const [isContextLost, setIsContextLost] = useState(false);
+  const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+  const tileErrorsRef = useRef(0);
+
+  // Monitor network connectivity changes for map tiles
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOnline = () => {
+      setIsOffline(false);
+      tileErrorsRef.current = 0;
+      if (mapRef.current) {
+        try {
+          mapRef.current.triggerRepaint();
+        } catch {}
+      }
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleSelectGeocoderLocation = useCallback((lat: number, lng: number) => {
     const map = mapRef.current;
@@ -835,11 +287,12 @@ export default function MapView({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && activePopupRef.current) {
         activePopupRef.current.remove();
+        cleanupActivePopupRoot();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [cleanupActivePopupRoot]);
 
   const [lassoPolygon, setLassoPolygon] = useState<Array<[number, number]> | null>(null);
   const [isochronePolygon, setIsochronePolygon] = useState<Array<[number, number]> | null>(null);
@@ -850,6 +303,7 @@ export default function MapView({
   const [showPogonHub, setShowPogonHub] = useState(false);
   const [isZenMode, setIsZenMode] = useState(false);
   const [isMapMenuOpen, setIsMapMenuOpen] = useState(false);
+  const [detailedModalAdId, setDetailedModalAdId] = useState<string | null>(null);
   const [showIsochroneModal, setShowIsochroneModal] = useState(false);
   const [showGeoAlertModal, setShowGeoAlertModal] = useState(false);
   const [isLassoDrawing, setIsLassoDrawing] = useState(false);
@@ -869,6 +323,7 @@ export default function MapView({
   const [isDroneOrbiting, setIsDroneOrbiting] = useState(false);
   const [sunlightMode, setSunlightMode] = useState<SunlightMode>('auto');
   const [cameraPitchMode, setCameraPitchMode] = useState<'flat' | 'cinematic'>('cinematic');
+  const [currentZoom, setCurrentZoom] = useState<number>(DEFAULT_ZOOM);
   const landmarkMarkersRef = useRef<maplibregl.Marker[]>([]);
   const droneOrbitAnimRef = useRef<number | null>(null);
 
@@ -895,7 +350,24 @@ export default function MapView({
   );
 
   const geocodedAds = useMemo(() => {
-    let base = visibleAds.filter((ad) => ad.latitude !== null && ad.longitude !== null);
+    let base = visibleAds.filter(
+      (ad) =>
+        ad != null &&
+        ad.latitude !== null &&
+        ad.latitude !== undefined &&
+        typeof ad.latitude === 'number' &&
+        !isNaN(ad.latitude) &&
+        isFinite(ad.latitude) &&
+        ad.latitude >= -90 &&
+        ad.latitude <= 90 &&
+        ad.longitude !== null &&
+        ad.longitude !== undefined &&
+        typeof ad.longitude === 'number' &&
+        !isNaN(ad.longitude) &&
+        isFinite(ad.longitude) &&
+        ad.longitude >= -180 &&
+        ad.longitude <= 180
+    );
     if (quickFilter === 'high_pay') {
       base = base.filter((ad) => typeof ad.price === 'number' && ad.price >= 10000);
     } else if (quickFilter === 'remote') {
@@ -954,6 +426,9 @@ export default function MapView({
     let styleLoadTimer: ReturnType<typeof setTimeout> | null = null;
     let initTimer: ReturnType<typeof setTimeout> | null = null;
     let usedFallback = false;
+    let canvas: HTMLCanvasElement | null = null;
+    let handleContextLost: ((e: Event) => void) | null = null;
+    let handleContextRestored: (() => void) | null = null;
 
     // Parse initial parameters from URL if present
     let initialCenter = SZCZECIN;
@@ -1013,15 +488,33 @@ export default function MapView({
 
       mapRef.current = map;
 
-      // Add Google Maps-style navigation controls in bottom-right (3D pitch compass + smooth zoom)
-      map.addControl(
-        new maplibregl.NavigationControl({
-          visualizePitch: true,
-          showCompass: true,
-          showZoom: true,
-        }),
-        'bottom-right'
-      );
+      // ─── WEBGL CONTEXT LOSS & RECOVERY ──────────────────────────────
+      canvas = map.getCanvas();
+      handleContextLost = (e: Event) => {
+        e.preventDefault(); // Informs browser that application will manage WebGL context restoration
+        console.warn('[MapView] WebGL context lost.');
+        setIsContextLost(true);
+        if (droneOrbitAnimRef.current) {
+          cancelAnimationFrame(droneOrbitAnimRef.current);
+          droneOrbitAnimRef.current = null;
+        }
+      };
+      handleContextRestored = () => {
+        console.info('[MapView] WebGL context restored. Recreating map instance...');
+        setIsContextLost(false);
+        setMapEpoch((prev) => prev + 1);
+      };
+
+      if (canvas) {
+        canvas.addEventListener('webglcontextlost', handleContextLost, false);
+        canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
+      }
+
+      map.on('webglcontextlost', () => setIsContextLost(true));
+      map.on('webglcontextrestored', () => {
+        setIsContextLost(false);
+        setMapEpoch((prev) => prev + 1);
+      });
 
       // Update URL query parameters on map move
       const updateUrlParams = () => {
@@ -1042,14 +535,26 @@ export default function MapView({
       map.on('zoomend', () => {
         setMoved(true);
         updateUrlParams();
+        if (map) setCurrentZoom(map.getZoom());
       });
 
       // ─── ERROR HANDLING & FALLBACK ─────────────────────────────────
       map.on('error', (e) => {
-        console.warn('[MapView] MapLibre error:', e.error?.message || e);
-        if (!usedFallback && map && !map.isStyleLoaded()) {
+        const msg = e.error?.message || (typeof e === 'string' ? e : '');
+        console.warn('[MapView] MapLibre error:', msg || e);
+
+        const isTileError =
+          /tile|status 404|status 503|fetch|network/i.test(msg) ||
+          e.error?.status === 404 ||
+          e.error?.status === 503;
+
+        if (isTileError) {
+          tileErrorsRef.current += 1;
+        }
+
+        if (!usedFallback && map && (!map.isStyleLoaded() || tileErrorsRef.current >= 4)) {
           usedFallback = true;
-          console.warn('[MapView] Vector style failed — falling back to OSM raster tiles');
+          console.warn('[MapView] Vector style failed/degraded — falling back to OSM raster tiles');
           setMapError('Kafelki wektorowe niedostępne — używam mapy zastępczej.');
           try {
             map.setStyle(FALLBACK_STYLE);
@@ -1085,11 +590,10 @@ export default function MapView({
         if (mapStyle === 'baltic-slate') {
           try {
             if (map.getLayer('water')) {
-              map.setPaintProperty('water', 'fill-color', '#0369a1');
+              map.setPaintProperty('water', 'fill-color', '#0284c7');
             }
           } catch { /* non-fatal */ }
         }
-        applySunlightToMap(map, sunlightMode);
 
         // ─── 1. WEBGL 3D BUILDINGS LAYER ──────────────────────────────
         const layers = map.getStyle().layers;
@@ -1108,20 +612,21 @@ export default function MapView({
                   source: sourceId,
                   'source-layer': 'building',
                   type: 'fill-extrusion',
-                  minzoom: 15,
+                  minzoom: 13.5,
                   paint: {
-                    'fill-extrusion-color': dark ? '#2e3b4e' : '#cbd5e1',
+                    'fill-extrusion-color': dark ? '#1e293b' : '#cbd5e1',
                     'fill-extrusion-height': [
                       'interpolate', ['linear'], ['zoom'],
-                      15, 0,
-                      15.05, ['get', 'render_height']
+                      13.5, 0,
+                      15, ['get', 'render_height']
                     ],
                     'fill-extrusion-base': [
                       'interpolate', ['linear'], ['zoom'],
-                      15, 0,
-                      15.05, ['get', 'render_min_height']
+                      13.5, 0,
+                      15, ['get', 'render_min_height']
                     ],
-                    'fill-extrusion-opacity': 0.65
+                    'fill-extrusion-opacity': 0.85,
+                    'fill-extrusion-vertical-gradient': true
                   }
                 },
                 labelLayerId
@@ -1131,6 +636,59 @@ export default function MapView({
             console.warn('Failed to add 3d-buildings layer:', err);
           }
         }
+
+        // ─── 1B. NATIVE WEBGL 3D SZCZECIN LANDMARKS EXTRUSION ──────────
+        try {
+          if (!map.getSource('szczecin-landmarks-3d-source')) {
+            map.addSource('szczecin-landmarks-3d-source', {
+              type: 'geojson',
+              data: getSzczecinLandmarks3DPolygonsGeoJson(),
+            });
+          }
+
+          if (!map.getLayer('szczecin-landmarks-ground-glow')) {
+            map.addLayer(
+              {
+                id: 'szczecin-landmarks-ground-glow',
+                type: 'circle',
+                source: 'szczecin-landmarks-3d-source',
+                minzoom: 11,
+                paint: {
+                  'circle-radius': 36,
+                  'circle-color': ['get', 'glowColor'],
+                  'circle-blur': 0.85,
+                  'circle-opacity': 0.45,
+                },
+              },
+              labelLayerId
+            );
+          }
+
+          if (!map.getLayer('szczecin-landmarks-3d-extrusion')) {
+            map.addLayer(
+              {
+                id: 'szczecin-landmarks-3d-extrusion',
+                type: 'fill-extrusion',
+                source: 'szczecin-landmarks-3d-source',
+                minzoom: 11.5,
+                paint: {
+                  'fill-extrusion-color': ['get', 'lightColor'],
+                  'fill-extrusion-height': ['get', 'heightMeters'],
+                  'fill-extrusion-base': 0,
+                  'fill-extrusion-opacity': 0.9,
+                  'fill-extrusion-vertical-gradient': true,
+                },
+              },
+              labelLayerId
+            );
+          }
+        } catch (err) {
+          console.warn('Failed to add szczecin landmarks 3d layer:', err);
+        }
+
+        // Apply dynamic sunlight, shadows, fog, water & building shaders
+        applySunlightToMap(map, sunlightMode);
+
 
         // ─── 2. NATIVE WEBGL GEOJSON CLUSTERING SOURCE & LAYERS ─────────
         if (!map.getSource('jobs-cluster-source')) {
@@ -1307,7 +865,6 @@ export default function MapView({
       });
     }, delay);
 
-    const popupRoots = popupRootsRef.current;
     const markers = markersRef.current;
 
     return () => {
@@ -1316,12 +873,7 @@ export default function MapView({
 
       globalActiveMaps = Math.max(0, globalActiveMaps - 1);
 
-      // Defer unmounts to avoid synchronous unmount during React render (Fast Refresh)
-      const rootsToUnmount = new Map(popupRoots);
-      popupRoots.clear();
-      setTimeout(() => {
-        rootsToUnmount.forEach(root => { try { root.unmount(); } catch { /* ignore */ } });
-      }, 0);
+      cleanupActivePopupRoot();
 
       markers.forEach((marker) => marker.remove());
       markers.clear();
@@ -1340,6 +892,22 @@ export default function MapView({
       if (droneOrbitAnimRef.current) {
         cancelAnimationFrame(droneOrbitAnimRef.current);
         droneOrbitAnimRef.current = null;
+      }
+
+      if (canvas && handleContextLost && handleContextRestored) {
+        canvas.removeEventListener('webglcontextlost', handleContextLost, false);
+        canvas.removeEventListener('webglcontextrestored', handleContextRestored, false);
+      }
+
+      if (homeBaseMarkerRef.current) {
+        try { homeBaseMarkerRef.current.remove(); } catch {}
+        homeBaseMarkerRef.current = null;
+      }
+      supplierMarkersRef.current.forEach((m) => { try { m.remove(); } catch {} });
+      supplierMarkersRef.current = [];
+      if (activePopupRef.current) {
+        try { activePopupRef.current.remove(); } catch {}
+        activePopupRef.current = null;
       }
 
       setMapLoaded(false);
@@ -1362,7 +930,7 @@ export default function MapView({
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mapEpoch]);
 
   // Handle theme style switching without recreating the map instance/WebGL context
   const lastTheme = useRef(isDark);
@@ -1413,11 +981,27 @@ export default function MapView({
         source: 'district-salary-source',
         paint: {
           'fill-color': ['get', 'color'],
-          'fill-opacity': showSalaryHeatmap ? 0.35 : 0,
+          'fill-opacity': showSalaryHeatmap ? 0.38 : 0,
         },
       });
     } else {
-      map.setPaintProperty('district-salary-layer', 'fill-opacity', showSalaryHeatmap ? 0.35 : 0);
+      map.setPaintProperty('district-salary-layer', 'fill-opacity', showSalaryHeatmap ? 0.38 : 0);
+    }
+
+    if (!map.getLayer('district-salary-outline')) {
+      map.addLayer({
+        id: 'district-salary-outline',
+        type: 'line',
+        source: 'district-salary-source',
+        paint: {
+          'line-color': ['get', 'borderColor'],
+          'line-width': 2,
+          'line-dasharray': [2, 1],
+          'line-opacity': showSalaryHeatmap ? 0.85 : 0,
+        },
+      });
+    } else {
+      map.setPaintProperty('district-salary-outline', 'line-opacity', showSalaryHeatmap ? 0.85 : 0);
     }
   }, [showSalaryHeatmap, mapLoaded]);
 
@@ -1429,28 +1013,38 @@ export default function MapView({
     const clusterSource = map.getSource('jobs-cluster-source') as maplibregl.GeoJSONSource;
     const heatmapSource = map.getSource('heatmap-source') as maplibregl.GeoJSONSource;
 
-    const featureCollection: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: geocodedAds.map(ad => {
-        const pos = jitteredPosition(ad.latitude!, ad.longitude!, ad.id);
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [pos[1], pos[0]] // [lng, lat]
-          },
-          properties: {
-            id: ad.id,
-            category: ad.category,
-            title: ad.title,
-            price: ad.price ?? '',
-          }
-        };
-      })
-    };
+    const rawFeatures = geocodedAds
+      .filter((ad) => isValidCoordinate(ad.latitude, ad.longitude))
+      .map((ad) => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [ad.longitude!, ad.latitude!],
+        },
+        properties: {
+          id: ad.id,
+          category: ad.category,
+          title: ad.title,
+          price: ad.price ?? '',
+        },
+      }));
 
-    if (clusterSource) clusterSource.setData(featureCollection);
-    if (heatmapSource) heatmapSource.setData(featureCollection);
+    const featureCollection = sanitizeFeatureCollection(rawFeatures);
+
+    if (clusterSource) {
+      try {
+        clusterSource.setData(featureCollection);
+      } catch (err) {
+        console.warn('[MapView] clusterSource.setData failed:', err);
+      }
+    }
+    if (heatmapSource) {
+      try {
+        heatmapSource.setData(featureCollection);
+      } catch (err) {
+        console.warn('[MapView] heatmapSource.setData failed:', err);
+      }
+    }
   }, [geocodedAds, mapLoaded]);
 
   // Commute Radius Circle & Home Marker Integration
@@ -1672,13 +1266,25 @@ export default function MapView({
     };
   }, [showSuppliersModal, mapLoaded]);
 
-  // ─── 3D SZCZECIN LANDMARK BEACONS ────────────────────────────────
+  // ─── 3D SZCZECIN LANDMARK BEACONS & WEBGL EXTRUSIONS ───────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
     landmarkMarkersRef.current.forEach((m) => m.remove());
     landmarkMarkersRef.current = [];
+
+    // Toggle native WebGL 3D Landmark Extrusion Layers
+    try {
+      if (map.getLayer('szczecin-landmarks-3d-extrusion')) {
+        map.setLayoutProperty('szczecin-landmarks-3d-extrusion', 'visibility', showLandmarks3D ? 'visible' : 'none');
+      }
+      if (map.getLayer('szczecin-landmarks-ground-glow')) {
+        map.setLayoutProperty('szczecin-landmarks-ground-glow', 'visibility', showLandmarks3D ? 'visible' : 'none');
+      }
+    } catch {
+      /* non-fatal */
+    }
 
     if (!showLandmarks3D) return;
 
@@ -1689,21 +1295,21 @@ export default function MapView({
       el.style.userSelect = 'none';
 
       el.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;transform:translateY(-6px);transition:transform 0.2s ease;">
+        <div class="tactical-pill-wrapper" style="display:flex;flex-direction:column;align-items:center;transform:translateY(-6px);will-change:transform;contain:layout style;">
           <div style="position:relative;">
             <!-- Pulsing Beacon Halo -->
-            <div style="position:absolute;inset:-6px;border-radius:50%;background:${lm.glowColor};animation:marker-pulse 2.2s infinite;filter:blur(3px);pointer-events:none;"></div>
+            <div style="position:absolute;inset:-6px;border-radius:50%;background:${lm.glowColor};animation:marker-pulse 2.2s infinite;filter:blur(3px);will-change:transform,opacity;pointer-events:none;"></div>
             
             <!-- Beacon Badge Capsule -->
-            <div style="position:relative;padding:4px 8px;background:rgba(9,13,22,0.92);backdrop-filter:blur(10px);border:1.5px solid ${lm.lightColor};border-radius:999px;display:flex;align-items:center;gap:5px;box-shadow:0 4px 16px rgba(0,0,0,0.6), 0 0 12px ${lm.glowColor};">
+            <div style="position:relative;padding:4px 9px;background:rgba(8,14,26,0.94);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1.5px solid ${lm.lightColor};border-radius:999px;display:flex;align-items:center;gap:5px;box-shadow:0 4px 16px rgba(0,0,0,0.6), 0 0 14px ${lm.glowColor};">
               <span style="font-size:13px;line-height:1;">${lm.icon}</span>
-              <span style="font-size:10.5px;font-weight:800;color:#ffffff;white-space:nowrap;">${lm.name.split(' ')[0]}</span>
-              <span style="font-size:8px;font-weight:900;color:${lm.lightColor};background:rgba(255,255,255,0.08);padding:1px 4px;border-radius:4px;line-height:1;">${lm.heightMeters}m</span>
+              <span style="font-size:10.5px;font-weight:800;color:#ffffff;white-space:nowrap;letter-spacing:-0.01em;">${lm.name.split(' ')[0]}</span>
+              <span style="font-size:8px;font-weight:900;color:${lm.lightColor};background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:4px;line-height:1;font-variant-numeric:tabular-nums;">${lm.heightMeters}m</span>
             </div>
           </div>
           
-          <!-- Downward Needle Beam -->
-          <div style="width:2px;height:10px;background:linear-gradient(to bottom, ${lm.lightColor}, transparent);box-shadow:0 0 6px ${lm.lightColor};"></div>
+          <!-- Downward Precision Laser Beam -->
+          <div style="width:2px;height:12px;background:linear-gradient(to bottom, ${lm.lightColor}, transparent);box-shadow:0 0 8px ${lm.lightColor};"></div>
         </div>
       `;
 
@@ -1733,6 +1339,7 @@ export default function MapView({
       landmarkMarkersRef.current = [];
     };
   }, [showLandmarks3D, mapLoaded, prefersReducedMotion]);
+
 
   // ─── 360° DRONE ORBIT ENGINE ─────────────────────────────────────
   useEffect(() => {
@@ -1781,14 +1388,20 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    // Defer unmount of existing root to avoid "synchronous unmount during render" React warning
-    const existingRoot = popupRootsRef.current.get(ad.id);
-    if (existingRoot) {
-      popupRootsRef.current.delete(ad.id);
-      setTimeout(() => { try { existingRoot.unmount(); } catch { /* ignore */ } }, 0);
+    // On mobile screens, MobileBottomSheet acts as the bottom preview card.
+    // We suppress the MapLibre popup on mobile to prevent occlusion of the pin and gestures.
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    if (isMobile) {
+      if (activePopupRef.current) {
+        activePopupRef.current.remove();
+        activePopupRef.current = null;
+      }
+      cleanupActivePopupRoot();
+      return;
     }
 
-    // Remove any previously active popup
+    // Clean up any previously active popup & React root
+    cleanupActivePopupRoot();
     if (activePopupRef.current) {
       activePopupRef.current.remove();
       activePopupRef.current = null;
@@ -1797,7 +1410,7 @@ export default function MapView({
     const popupContainer = document.createElement('div');
     popupContainer.className = 'maplibre-popup-content';
     const root = createRoot(popupContainer);
-    popupRootsRef.current.set(ad.id, root);
+    activePopupRootRef.current = { id: ad.id, root };
 
     const renderPopupContent = () => {
       root.render(
@@ -1809,6 +1422,7 @@ export default function MapView({
             setTimeout(renderPopupContent, 10);
           }}
           onShowInList={() => onShowInList?.(ad.id)}
+          onOpenDetails={() => setDetailedModalAdId(ad.id)}
           isDark={isDark}
           homeLat={homeLat}
           homeLng={homeLng}
@@ -1831,28 +1445,32 @@ export default function MapView({
     activePopupRef.current = popup;
 
     popup.on('close', () => {
-      popupRootsRef.current.delete(ad.id);
+      cleanupActivePopupRoot();
       if (activePopupRef.current === popup) {
         activePopupRef.current = null;
       }
-      // Defer unmount to avoid synchronous unmount during React render cycle
-      setTimeout(() => { try { root.unmount(); } catch { /* ignore */ } }, 0);
     });
-  }, [isFavorite, onToggleFavorite, onShowInList, isDark, homeLat, homeLng]);
+  }, [cleanupActivePopupRoot, isFavorite, onToggleFavorite, onShowInList, isDark, homeLat, homeLng]);
 
   // ─── SPIDERFY & UNCLUSTERED MARKER SYNC ──────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
 
-    // Group items by coordinate to detect overlapping pins
-    const coordGroups = new Map<string, DisplayAnnouncement[]>();
+    // Group items by coordinate to detect overlapping pins in Szczecin (e.g. Brama Portowa, Plac Rodła)
+    // 4 decimal places gives ~11m latitude and ~6.6m longitude precision
+    const coordGroups = new Map<string, { center: [number, number]; ads: DisplayAnnouncement[] }>();
     geocodedAds.forEach(ad => {
-      const pos = jitteredPosition(ad.latitude!, ad.longitude!, ad.id);
-      const key = `${pos[1].toFixed(5)},${pos[0].toFixed(5)}`;
-      const existing = coordGroups.get(key) || [];
-      existing.push(ad);
-      coordGroups.set(key, existing);
+      const key = `${ad.latitude!.toFixed(4)},${ad.longitude!.toFixed(4)}`;
+      const existing = coordGroups.get(key);
+      if (existing) {
+        existing.ads.push(ad);
+      } else {
+        coordGroups.set(key, {
+          center: [ad.longitude!, ad.latitude!],
+          ads: [ad],
+        });
+      }
     });
 
     const currentIds = new Set(geocodedAds.map(ad => ad.id));
@@ -1860,6 +1478,9 @@ export default function MapView({
       if (!currentIds.has(id)) {
         marker.remove();
         markersRef.current.delete(id);
+        if (activePopupRootRef.current?.id === id) {
+          cleanupActivePopupRoot();
+        }
       }
     });
 
@@ -1870,20 +1491,22 @@ export default function MapView({
 
     const zoom = map.getZoom();
 
-    coordGroups.forEach((group, key) => {
-      const [lng, lat] = key.split(',').map(Number);
-      const spiderPositions = generateSpiderfyPositions([lng, lat], group.length, zoom);
+    coordGroups.forEach(({ center, ads: group }) => {
+      const isOverlapping = group.length > 1;
+      const spiderPositions = isOverlapping
+        ? generateSpiderfyPositions(center, group.length, zoom)
+        : [center];
 
       group.forEach((ad, idx) => {
-        const targetCoords = group.length > 1 ? spiderPositions[idx] : [lng, lat] as [number, number];
+        const targetCoords = isOverlapping ? spiderPositions[idx] || center : center;
 
-        if (group.length > 1) {
-          // Draw connecting line leg feature
+        if (isOverlapping) {
+          // Draw connecting line leg feature from true center to spider pin
           spiderLegFeatures.push({
             type: 'Feature',
             geometry: {
               type: 'LineString',
-              coordinates: [[lng, lat], targetCoords]
+              coordinates: [center, targetCoords]
             },
             properties: {}
           });
@@ -1895,20 +1518,30 @@ export default function MapView({
 
         const isFav = isFavorite(ad.id);
         const isSelected = ad.id === selectedId;
+        const isHovered = ad.id === hoveredId;
         const isUrgent = /cito|piln|od zaraz|natychmiast/i.test(ad.title || '');
         const isFresh = ad.scraped_at ? (Date.now() - new Date(ad.scraped_at).getTime() < 6 * 3600 * 1000) : false;
+
+        const shouldShowMarker = !showHeatmap && (isSelected || zoom >= 12.5);
 
         let marker = markersRef.current.get(ad.id);
 
         if (!marker) {
           const el = document.createElement('div');
           el.className = 'job-marker';
-          el.style.display = showHeatmap ? 'none' : 'block';
-          el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price, isUrgent, isFresh);
+          el.style.display = shouldShowMarker ? 'block' : 'none';
+          el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price, isUrgent, isFresh, isHovered);
 
           marker = new maplibregl.Marker({ element: el })
             .setLngLat(targetCoords)
             .addTo(map);
+
+          el.addEventListener('mouseenter', () => {
+            onMarkerHover?.(ad.id);
+          });
+          el.addEventListener('mouseleave', () => {
+            onMarkerHover?.(null);
+          });
 
           el.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1921,25 +1554,46 @@ export default function MapView({
         } else {
           const el = marker.getElement();
           if (el) {
-            el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price, isUrgent, isFresh);
-            el.style.display = showHeatmap ? 'none' : 'block';
+            el.innerHTML = getMarkerHtml(ad.category, isFav, isSelected, isDimmed, ad.price, isUrgent, isFresh, isHovered);
+            el.style.display = shouldShowMarker ? 'block' : 'none';
           }
           marker.setLngLat(targetCoords);
         }
       });
     });
 
+    // Dynamic Level-Of-Detail zoom listener to cull non-selected DOM markers at overview zoom
+    const handleZoomVisibility = () => {
+      if (!map) return;
+      const currentZ = map.getZoom();
+      markersRef.current.forEach((m, id) => {
+        const el = m.getElement();
+        if (el) {
+          const visible = !showHeatmap && (id === selectedId || currentZ >= 12.5);
+          el.style.display = visible ? 'block' : 'none';
+        }
+      });
+    };
+
+    map.on('zoom', handleZoomVisibility);
+
     // Update Spider Legs Source
     const spiderLegsSource = map.getSource('spider-legs-source') as maplibregl.GeoJSONSource;
     if (spiderLegsSource) {
-      spiderLegsSource.setData({
-        type: 'FeatureCollection',
-        features: spiderLegFeatures
-      });
+      const sanitizedLegs = sanitizeFeatureCollection(spiderLegFeatures);
+      try {
+        spiderLegsSource.setData(sanitizedLegs);
+      } catch (err) {
+        console.warn('[MapView] spiderLegsSource.setData failed:', err);
+      }
     }
 
+    return () => {
+      map.off('zoom', handleZoomVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geocodedAds, selectedId, isFavorite, mapLoaded]);
+  }, [geocodedAds, selectedId, hoveredId, isFavorite, mapLoaded, currentZoom, showHeatmap]);
+
 
   // FlyTo on external selectedId (e.g. "Pokaż na mapie" click)
   const lastFlyToken = useRef(-1);
@@ -2130,15 +1784,99 @@ export default function MapView({
         </div>
       )}
 
+      {/* WebGL Context Loss Recovery Banner */}
+      {isContextLost && (
+        <div
+          role="alert"
+          style={{
+            position: 'absolute',
+            top: '52px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 40,
+            padding: '10px 20px',
+            background: '#450a0a',
+            border: '1px solid #dc2626',
+            borderRadius: '12px',
+            fontSize: '12px',
+            fontWeight: 600,
+            color: '#fecaca',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            maxWidth: '92%',
+          }}
+        >
+          <span>⚡</span>
+          <span>Utracono połączenie z kartą graficzną (WebGL).</span>
+          <button
+            type="button"
+            onClick={() => {
+              setIsContextLost(false);
+              setMapEpoch((prev) => prev + 1);
+            }}
+            style={{
+              padding: '4px 10px',
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Przywróć mapę
+          </button>
+        </div>
+      )}
+
+      {/* Offline Mode Status Indicator */}
+      {isOffline && (
+        <div
+          role="status"
+          style={{
+            position: 'absolute',
+            bottom: '24px',
+            left: '12px',
+            zIndex: 25,
+            padding: '6px 12px',
+            background: 'rgba(24, 24, 27, 0.92)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid rgba(245, 158, 11, 0.5)',
+            borderRadius: '999px',
+            fontSize: '11px',
+            fontWeight: 600,
+            color: '#fbbf24',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#f59e0b' }} />
+          <span>Tryb offline: kafelki z pamięci podręcznej</span>
+        </div>
+      )}
+
       {/* 🧭 Master Enlarged Collapsible Map Menu (Lewa Strona) */}
-      <div className="absolute top-14 left-3 z-20 flex flex-col items-start gap-1.5 pointer-events-auto">
+      <div className="absolute top-3 left-3 z-30 flex flex-col items-start gap-1.5 pointer-events-auto">
+        {/* Backdrop overlay to close menu on click outside */}
+        {isMapMenuOpen && (
+          <div
+            className="fixed inset-0 z-20 bg-black/25 backdrop-blur-[1px]"
+            onClick={() => setIsMapMenuOpen(false)}
+          />
+        )}
+
         {/* Main Trigger Toggle Pill */}
         <button
           onClick={() => {
             triggerHaptic(15);
             setIsMapMenuOpen(!isMapMenuOpen);
           }}
-          className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-zinc-950/90 hover:bg-zinc-900/95 border border-white/10 hover:border-emerald-500/40 shadow-2xl shadow-black/60 backdrop-blur-2xl text-xs font-black text-emerald-400 hover:text-emerald-300 transition-all cursor-pointer group"
+          className="relative z-30 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-950/90 hover:bg-zinc-900 border border-white/10 hover:border-emerald-500/40 shadow-xl backdrop-blur-2xl text-xs font-black text-emerald-400 hover:text-emerald-300 transition-all cursor-pointer group min-h-[40px] touch-manipulation"
           title="Zwiń / Rozwiń menu narzędzi mapy"
         >
           <span className="text-base group-hover:scale-110 transition-transform">🗺️</span>
@@ -2698,34 +2436,60 @@ export default function MapView({
         hideTriggerButton={true}
       />
 
-      {/* Mobile Snap Bottom Sheet (Hidden when a specific job modal is active) */}
-      {!selectedId && (
+      {/* Mobile Snap Bottom Sheet (Always Mounted for Mobile, touch targets >= 44px) */}
+      <div className="md:hidden">
         <MobileBottomSheet
           ads={geocodedAds}
           selectedAd={geocodedAds.find((a) => a.id === selectedId) || null}
           selectedId={selectedId}
-          onSelectAd={(id: string) => onMarkerClick?.(id)}
+          onSelectAd={(id: string) => {
+            onMarkerClick?.(id);
+            const ad = geocodedAds.find((a) => a.id === id);
+            if (ad && mapRef.current) {
+              const pos = jitteredPosition(ad.latitude!, ad.longitude!, ad.id);
+              mapRef.current.flyTo({
+                center: [pos[1], pos[0]],
+                zoom: Math.max(mapRef.current.getZoom(), FLY_TO_ZOOM),
+                padding: { top: 60, bottom: 220, left: 0, right: 0 },
+                essential: true,
+                duration: prefersReducedMotion ? 0 : 1000,
+              });
+            }
+          }}
           isFavorite={isFavorite}
           onToggleFavorite={onToggleFavorite}
-          onShowOnMap={(id: string) => onMarkerClick?.(id)}
+          onShowOnMap={(id: string) => {
+            onMarkerClick?.(id);
+            const ad = geocodedAds.find((a) => a.id === id);
+            if (ad && mapRef.current) {
+              const pos = jitteredPosition(ad.latitude!, ad.longitude!, ad.id);
+              mapRef.current.flyTo({
+                center: [pos[1], pos[0]],
+                zoom: Math.max(mapRef.current.getZoom(), FLY_TO_ZOOM),
+                padding: { top: 60, bottom: 220, left: 0, right: 0 },
+                essential: true,
+                duration: prefersReducedMotion ? 0 : 1000,
+              });
+            }
+          }}
           onSnapStateChange={setSheetSnapState}
           ui={ui}
           isDark={isDark}
         />
-      )}
+      </div>
 
-      {/* 🚀 Draggable Centered Job Modal */}
-      {selectedId && (
+      {/* 🚀 Detailed Job Modal (Opened on demand via 'QR / Narzędzia', not obscuring the map by default) */}
+      {detailedModalAdId && (
         <DraggableJobModal
-          ad={geocodedAds.find((a) => a.id === selectedId) || null}
-          onClose={() => onMarkerClick?.('')}
+          ad={geocodedAds.find((a) => a.id === detailedModalAdId) || null}
+          onClose={() => setDetailedModalAdId(null)}
           onShowInList={() => {
-            const ad = geocodedAds.find((a) => a.id === selectedId);
+            const ad = geocodedAds.find((a) => a.id === detailedModalAdId);
             if (ad) onShowInList?.(ad.id);
           }}
-          isFavorite={selectedId ? isFavorite(selectedId) : false}
+          isFavorite={detailedModalAdId ? isFavorite(detailedModalAdId) : false}
           onToggleFavorite={() => {
-            if (selectedId) onToggleFavorite(selectedId);
+            if (detailedModalAdId) onToggleFavorite(detailedModalAdId);
           }}
           ui={ui}
           isDark={isDark}
@@ -2759,9 +2523,37 @@ export default function MapView({
         }}
       />
 
-      {/* 🧭 Tactical HUD Camera & 3D Environment Control Bar */}
-      <div className="absolute bottom-[92px] md:bottom-8 right-3 z-20 flex flex-col items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-950/85 backdrop-blur-xl border border-zinc-800 text-zinc-100 shadow-2xl select-none">
-        {/* Pitch 2D / 2.5D toggle */}
+      {/* 🧭 Tactical HUD Camera & Navigation Dock (Unified, Touch Targets >= 44px) */}
+      <div className="absolute top-14 right-3 md:top-auto md:bottom-8 md:right-3.5 z-20 flex flex-col items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-950/90 backdrop-blur-2xl border border-zinc-800/80 text-zinc-100 shadow-2xl select-none pointer-events-auto">
+        {/* Zoom In (+) */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            mapRef.current?.zoomIn({ duration: 250 });
+          }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center font-black text-xl hover:bg-zinc-800 active:scale-90 text-zinc-200 transition-all cursor-pointer touch-manipulation"
+          title="Przybliż widok mapy (+)"
+          aria-label="Przybliż"
+        >
+          +
+        </button>
+
+        {/* Zoom Out (−) */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            mapRef.current?.zoomOut({ duration: 250 });
+          }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center font-black text-xl hover:bg-zinc-800 active:scale-90 text-zinc-200 transition-all cursor-pointer touch-manipulation border-b border-zinc-800/60 pb-0.5"
+          title="Oddal widok mapy (−)"
+          aria-label="Oddal"
+        >
+          −
+        </button>
+
+        {/* Pitch 2D / 3D Toggle */}
         <button
           type="button"
           onClick={() => {
@@ -2776,13 +2568,13 @@ export default function MapView({
               map.easeTo({ pitch: 0, bearing: 0, duration: 900 });
             }
           }}
-          className={`p-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            cameraPitchMode === 'cinematic' ? 'bg-primary text-primary-foreground shadow-sm' : 'hover:bg-zinc-800 text-zinc-300'
+          className={`w-11 h-11 rounded-xl flex items-center justify-center text-xs font-black font-mono transition-all cursor-pointer touch-manipulation ${
+            cameraPitchMode === 'cinematic' ? 'bg-primary text-primary-foreground shadow-md' : 'hover:bg-zinc-800 text-zinc-300'
           }`}
-          title={cameraPitchMode === 'cinematic' ? 'Przełącz na widok 2D z góry (0°)' : 'Włącz widok kinowy 2.5D (52°)'}
+          title={cameraPitchMode === 'cinematic' ? 'Przełącz na widok płaski 2D (0°)' : 'Włącz widok kinowy 3D (52°)'}
           aria-label="Kąt kamery 3D"
         >
-          <span className="text-xs font-mono font-black">{cameraPitchMode === 'cinematic' ? '3D' : '2D'}</span>
+          {cameraPitchMode === 'cinematic' ? '3D' : '2D'}
         </button>
 
         {/* Reset North Compass */}
@@ -2792,11 +2584,11 @@ export default function MapView({
             triggerHaptic(10);
             mapRef.current?.easeTo({ bearing: 0, duration: 600 });
           }}
-          className="p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-cyan-400 transition-all cursor-pointer"
-          title="Zorientuj na Północ"
+          className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 active:scale-90 text-cyan-400 transition-all cursor-pointer touch-manipulation"
+          title="Zorientuj na Północ (0°)"
           aria-label="Północ"
         >
-          <span className="text-sm">🧭</span>
+          <span className="text-base">🧭</span>
         </button>
 
         {/* 360° Drone Orbit */}
@@ -2806,13 +2598,13 @@ export default function MapView({
             triggerHaptic(12);
             setIsDroneOrbiting((p) => !p);
           }}
-          className={`p-2 rounded-xl transition-all cursor-pointer ${
+          className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all cursor-pointer touch-manipulation ${
             isDroneOrbiting ? 'bg-rose-600 text-white animate-pulse shadow-md' : 'hover:bg-zinc-800 text-zinc-300'
           }`}
           title={isDroneOrbiting ? 'Zatrzymaj przelot drona' : 'Uruchom kinowy obieg dronem 360°'}
           aria-label="Obieg dronem 360°"
         >
-          <span className="text-sm">🛸</span>
+          <span className="text-base">🛸</span>
         </button>
 
         {/* Sunlight Cycler */}
@@ -2826,11 +2618,11 @@ export default function MapView({
               return modes[(curIdx + 1) % modes.length];
             });
           }}
-          className="p-2 rounded-xl hover:bg-zinc-800 active:scale-95 text-amber-400 transition-all cursor-pointer"
+          className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 active:scale-90 text-amber-400 transition-all cursor-pointer touch-manipulation"
           title={`Oświetlenie 3D: ${sunlightMode}`}
           aria-label="Oświetlenie 3D"
         >
-          <span className="text-sm">
+          <span className="text-base">
             {sunlightMode === 'night_cyberpunk' ? '🌃' : sunlightMode === 'sunset' ? '🌆' : sunlightMode === 'golden_hour' ? '🌅' : sunlightMode === 'morning' ? '☕' : '☀️'}
           </span>
         </button>
@@ -2842,54 +2634,118 @@ export default function MapView({
             triggerHaptic(10);
             setShowLandmarks3D((p) => !p);
           }}
-          className={`p-2 rounded-xl transition-all cursor-pointer ${
+          className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all cursor-pointer touch-manipulation ${
             showLandmarks3D ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'hover:bg-zinc-800 text-zinc-500'
           }`}
           title={showLandmarks3D ? 'Ukryj ikony 3D Szczecina' : 'Pokaż ikony 3D Szczecina'}
           aria-label="Landmarki 3D"
         >
-          <span className="text-sm">⚓</span>
+          <span className="text-base">⚓</span>
+        </button>
+
+        {/* 📊 District Salary Heatmap Toggle */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            setShowSalaryHeatmap((p) => !p);
+          }}
+          className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all cursor-pointer touch-manipulation ${
+            showSalaryHeatmap ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm' : 'hover:bg-zinc-800 text-zinc-500'
+          }`}
+          title={showSalaryHeatmap ? 'Ukryj heatmapę zarobków w dzielnicach' : 'Włącz heatmapę stawek w dzielnicach Szczecina'}
+          aria-label="Heatmapa zarobków"
+        >
+          <span className="text-base">🔥</span>
+        </button>
+
+        {/* 📡 Radar Zasięgu od Domu Majstra */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(10);
+            setShowHomeRadarModal(true);
+          }}
+          className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all cursor-pointer touch-manipulation ${
+            isRadarActive ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 shadow-sm' : 'hover:bg-zinc-800 text-zinc-500'
+          }`}
+          title={isRadarActive ? `Radar aktywny: ${radarRadiusKm}km od bazy` : 'Ustaw radar dojazdu od bazy/domu'}
+          aria-label="Radar bazy majstra"
+        >
+          <span className="text-base">📡</span>
         </button>
       </div>
 
-      {/* "Search in this area" button */}
-      <SearchAreaButton
-        visible={Boolean(onSearchArea && moved)}
-        onClick={handleSearchAreaClick}
-        ui={ui}
-      />
-
-      {/* 🎯 Active Spatial Filter Region Pill */}
-      {(lassoPolygon || isochronePolygon) && (
-        <div style={{
-          position: 'absolute', top: '96px', left: '50%', transform: 'translateX(-50%)',
-          zIndex: 15, background: '#10b981', color: 'white', fontSize: '12px',
-          fontWeight: 700, padding: '6px 14px', borderRadius: '20px', boxShadow: '0 4px 14px rgba(16,185,129,0.4)',
-          display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span>✨ Wycięta strefa: {geocodedAds.length} ofert</span>
-          <button
-            onClick={() => { setLassoPolygon(null); setIsochronePolygon(null); }}
-            style={{ background: 'rgba(0,0,0,0.2)', border: 'none', borderRadius: '50%', width: '18px', height: '18px', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', cursor: 'pointer' }}
-            title="Wyczyść wyciętą strefę"
-          >✕</button>
+      {/* 🎯 Centered Action Stack: Search in Area & Active Spatial Region Pill */}
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 pointer-events-none">
+        <div className="pointer-events-auto">
+          <SearchAreaButton
+            visible={Boolean(onSearchArea && moved)}
+            onClick={handleSearchAreaClick}
+            ui={ui}
+          />
         </div>
-      )}
 
-      {/* Category filter bar */}
-      <CategoryFilter active={activeCategories} onChange={onCategoryChange} ui={ui} top={12} />
+        {(lassoPolygon || isochronePolygon) && (
+          <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-600/95 backdrop-blur-md text-white text-xs font-bold shadow-lg border border-emerald-400/40 animate-in fade-in zoom-in-95">
+            <span>✨ Wycięta strefa: {geocodedAds.length} ofert</span>
+            <button
+              type="button"
+              onClick={() => { setLassoPolygon(null); setIsochronePolygon(null); }}
+              className="w-4 h-4 rounded-full bg-black/25 hover:bg-black/40 flex items-center justify-center text-[10px] cursor-pointer"
+              title="Wyczyść wyciętą strefę"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
-      {/* Bottom announcement cards carousel */}
-      {!showHeatmap && (
-        <ResultsCarousel
-          ads={geocodedAds}
-          selectedId={selectedId}
-          ui={ui}
-          isDark={isDark}
-          isFavorite={isFavorite}
-          onSelect={handleCarouselSelect}
-        />
-      )}
+        {/* 🔥 Glass HUD: District Salary Legend */}
+        {showSalaryHeatmap && (
+          <div className="pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-zinc-950/90 backdrop-blur-xl text-zinc-100 text-xs font-bold shadow-2xl border border-emerald-500/30 animate-in fade-in slide-in-from-top-2">
+            <span className="flex items-center gap-1.5 text-emerald-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Średnie Stawki w Dzielnicach</span>
+            </span>
+            <span className="text-zinc-500">|</span>
+            <span className="text-zinc-300 font-mono text-[11px]">
+              Łasztownia (56 zł/h) • Warszewo (52 zł/h) • Prawobrzeże (50 zł/h)
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowSalaryHeatmap(false)}
+              className="ml-1 text-zinc-400 hover:text-zinc-200 text-xs cursor-pointer"
+              title="Zamknij podgląd heatmapy"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        {/* 📡 Glass HUD: Active Commute Radar */}
+        {isRadarActive && (
+          <div className="pointer-events-auto flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-zinc-950/90 backdrop-blur-xl text-zinc-100 text-xs font-bold shadow-2xl border border-indigo-500/30 animate-in fade-in slide-in-from-top-2">
+            <span className="flex items-center gap-1.5 text-indigo-400">
+              <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+              <span>Radar Bazy: {radarRadiusKm} km</span>
+            </span>
+            <span className="text-zinc-500">|</span>
+            <span className="text-zinc-300 font-mono text-[11px]">
+              {geocodedAds.length} ofert w Twoim zasięgu
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsRadarActive(false)}
+              className="ml-1 text-zinc-400 hover:text-zinc-200 text-xs cursor-pointer"
+              title="Wyłącz radar zasięgu"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Category filter bar (Desktop top toolbar) */}
+      <CategoryFilter active={activeCategories} onChange={onCategoryChange} ui={ui} top={12} left={235} right={140} />
 
       {geocodedAds.length === 0 && (
         <EmptyOverlay
@@ -2957,57 +2813,74 @@ export default function MapView({
           background-color: ${isDark ? '#374151' : '#f3f4f6'} !important;
         }
         
-        /* Smooth marker appearance animation */
-        .job-marker > div {
-          animation: marker-fade-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        /* High-Vis Tactical Pill GPU styling & appearance */
+        .job-marker {
+          contain: layout style;
+        }
+
+        .job-marker .tactical-pill-wrapper {
+          animation: marker-fade-in 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
           transform-origin: bottom center;
         }
 
         @keyframes marker-fade-in {
           0% {
             opacity: 0;
-            transform: scale(0.5) translateY(12px);
-          }
-          70% {
-            opacity: 1;
+            transform: translate3d(0, 10px, 0) scale(0.65);
           }
           100% {
             opacity: 1;
-            transform: scale(1) translateY(0);
           }
         }
 
-        /* Pulse ring for selected marker */
+        /* Pulse ring for selected landmark / beacons */
         @keyframes marker-pulse {
           0% {
-            transform: translate(-50%, -65%) scale(0.8);
+            transform: translate3d(-50%, -50%, 0) scale(0.85);
             opacity: 0.9;
           }
           70% {
-            transform: translate(-50%, -65%) scale(1.5);
-            opacity: 0;
+            transform: translate3d(-50%, -50%, 0) scale(1.6);
+            opacity: 0.15;
           }
           100% {
-            transform: translate(-50%, -65%) scale(1.5);
+            transform: translate3d(-50%, -50%, 0) scale(1.6);
             opacity: 0;
           }
         }
 
-        /* High-Vis Sonar Wave Radar animation for fresh/urgent/selected pins */
+        /* High-Vis Primary Sonar Wave Radar animation */
         @keyframes sonar-wave {
           0% {
-            transform: translate(-50%, -50%) scale(0.65);
+            transform: translate3d(-50%, -50%, 0) scale(0.7);
             opacity: 0.9;
           }
           60% {
-            transform: translate(-50%, -50%) scale(2.0);
-            opacity: 0.2;
+            transform: translate3d(-50%, -50%, 0) scale(2.0);
+            opacity: 0.25;
           }
           100% {
-            transform: translate(-50%, -50%) scale(2.6);
+            transform: translate3d(-50%, -50%, 0) scale(2.7);
             opacity: 0;
           }
         }
+
+        /* Secondary Echo Radar Ripple */
+        @keyframes sonar-wave-echo {
+          0% {
+            transform: translate3d(-50%, -50%, 0) scale(0.5);
+            opacity: 0.75;
+          }
+          55% {
+            transform: translate3d(-50%, -50%, 0) scale(1.8);
+            opacity: 0.18;
+          }
+          100% {
+            transform: translate3d(-50%, -50%, 0) scale(2.4);
+            opacity: 0;
+          }
+        }
+
 
         @keyframes map-loader-spin { to { transform: rotate(360deg); } }
 

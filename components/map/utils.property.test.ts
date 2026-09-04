@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { filterGeocodedAnnouncements, formatMarkerBadgePrice, getMarkerPriceTier } from './utils';
+import {
+  filterGeocodedAnnouncements,
+  formatMarkerBadgePrice,
+  getMarkerPriceTier,
+  isValidCoordinate,
+  calculateDistanceKm,
+  generateSpiderfyPositions,
+} from './utils';
 import { MaskedAnnouncement, SourcePortal } from '@/lib/types/announcement';
 
 /**
@@ -96,3 +103,65 @@ describe('formatMarkerBadgePrice & getMarkerPriceTier helpers', () => {
     expect(getMarkerPriceTier(4000)).toBe('normal');
   });
 });
+
+describe('Property: Geographic coordinate validation & distance', () => {
+  const latArb = fc.double({ min: -90, max: 90, noNaN: true, noDefaultInfinity: true });
+  const lngArb = fc.double({ min: -180, max: 180, noNaN: true, noDefaultInfinity: true });
+
+  it('isValidCoordinate accepts all numbers within [-90, 90] x [-180, 180]', () => {
+    fc.assert(
+      fc.property(latArb, lngArb, (lat, lng) => {
+        expect(isValidCoordinate(lat, lng)).toBe(true);
+      }),
+      { numRuns: 100 }
+    );
+  });
+
+  it('calculateDistanceKm is symmetric, non-negative, and bounded by Earth circumference', () => {
+    fc.assert(
+      fc.property(latArb, lngArb, latArb, lngArb, (lat1, lon1, lat2, lon2) => {
+        const d1 = calculateDistanceKm(lat1, lon1, lat2, lon2);
+        const d2 = calculateDistanceKm(lat2, lon2, lat1, lon1);
+
+        expect(d1).toBeGreaterThanOrEqual(0);
+        expect(d1).toBe(d2); // Symmetry
+        expect(d1).toBeLessThanOrEqual(20038); // Half circumference of Earth (~20,015 km)
+      }),
+      { numRuns: 100 }
+    );
+  });
+
+  it('calculateDistanceKm identity: distance to same point is always 0', () => {
+    fc.assert(
+      fc.property(latArb, lngArb, (lat, lon) => {
+        expect(calculateDistanceKm(lat, lon, lat, lon)).toBe(0);
+      }),
+      { numRuns: 100 }
+    );
+  });
+});
+
+describe('Property: Spiderfy placement algorithm', () => {
+  const latArb = fc.double({ min: -80, max: 80, noNaN: true, noDefaultInfinity: true });
+  const lngArb = fc.double({ min: -170, max: 170, noNaN: true, noDefaultInfinity: true });
+  const countArb = fc.integer({ min: 1, max: 30 });
+  const zoomArb = fc.integer({ min: 5, max: 20 });
+
+  it('always produces exactly N finite coordinates for count N >= 1', () => {
+    fc.assert(
+      fc.property(lngArb, latArb, countArb, zoomArb, (lng, lat, count, zoom) => {
+        const positions = generateSpiderfyPositions([lng, lat], count, zoom);
+        expect(positions).toHaveLength(count);
+
+        for (const [x, y] of positions) {
+          expect(Number.isFinite(x)).toBe(true);
+          expect(Number.isFinite(y)).toBe(true);
+          expect(Number.isNaN(x)).toBe(false);
+          expect(Number.isNaN(y)).toBe(false);
+        }
+      }),
+      { numRuns: 100 }
+    );
+  });
+});
+

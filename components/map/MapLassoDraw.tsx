@@ -46,59 +46,97 @@ export function MapLassoDraw({
       const fillLayerId = 'lasso-draw-fill';
       const lineLayerId = 'lasso-draw-line';
 
-      const geometry: GeoJSON.Geometry = currentPoints.length >= 3
-        ? {
-            type: 'Polygon',
-            coordinates: [[...currentPoints, currentPoints[0]]],
-          }
-        : {
-            type: 'LineString',
-            coordinates: currentPoints,
-          };
+      let features: GeoJSON.Feature[] = [];
+      if (currentPoints.length >= 3) {
+        features = [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[...currentPoints, currentPoints[0]]],
+            },
+            properties: {},
+          },
+        ];
+      } else if (currentPoints.length === 2) {
+        features = [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: currentPoints,
+            },
+            properties: {},
+          },
+        ];
+      } else if (currentPoints.length === 1) {
+        features = [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: currentPoints[0],
+            },
+            properties: {},
+          },
+        ];
+      }
 
       const geojson: GeoJSON.FeatureCollection = {
         type: 'FeatureCollection',
-        features: currentPoints.length > 0 ? [
-          {
-            type: 'Feature',
-            geometry,
-            properties: {},
-          },
-        ] : [],
+        features,
       };
 
-      if (!map.getSource(sourceId)) {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: geojson,
-        });
+      try {
+        if (!map.getSource(sourceId)) {
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: geojson,
+          });
 
-        map.addLayer({
-          id: fillLayerId,
-          type: 'fill',
-          source: sourceId,
-          paint: {
-            'fill-color': '#10b981',
-            'fill-opacity': 0.15,
-          },
-        });
+          map.addLayer({
+            id: fillLayerId,
+            type: 'fill',
+            source: sourceId,
+            filter: ['==', '$type', 'Polygon'],
+            paint: {
+              'fill-color': '#10b981',
+              'fill-opacity': 0.15,
+            },
+          });
 
-        map.addLayer({
-          id: lineLayerId,
-          type: 'line',
-          source: sourceId,
-          paint: {
-            'line-color': '#10b981',
-            'line-width': 2.5,
-            'line-dasharray': [2, 2],
-          },
-        });
-      } else {
-        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);
+          map.addLayer({
+            id: lineLayerId,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': '#10b981',
+              'line-width': 2.5,
+              'line-dasharray': [2, 2],
+            },
+          });
+        } else {
+          (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);
+        }
+      } catch (err) {
+        console.warn('[MapLassoDraw] Failed to update source/layers:', err);
       }
     },
     [map]
   );
+
+  // Clean up lasso source and layers on component unmount
+  useEffect(() => {
+    return () => {
+      if (map) {
+        try {
+          if (map.getLayer('lasso-draw-fill')) map.removeLayer('lasso-draw-fill');
+          if (map.getLayer('lasso-draw-line')) map.removeLayer('lasso-draw-line');
+          if (map.getSource('lasso-draw-source')) map.removeSource('lasso-draw-source');
+        } catch {}
+      }
+    };
+  }, [map]);
 
   useEffect(() => {
     if (!map) return;

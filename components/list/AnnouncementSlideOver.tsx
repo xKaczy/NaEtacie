@@ -31,6 +31,7 @@ export interface AnnouncementSlideOverProps {
   onOpenEstimator?: () => void;
   onOpenAiInterview?: () => void;
   onShowOnMap?: () => void;
+  onOpenTimeline?: () => void;
 }
 
 export function AnnouncementSlideOver({
@@ -41,6 +42,7 @@ export function AnnouncementSlideOver({
   onOpenEstimator,
   onOpenAiInterview,
   onShowOnMap,
+  onOpenTimeline,
 }: AnnouncementSlideOverProps) {
   if (!announcement) return null;
 
@@ -103,21 +105,37 @@ export function AnnouncementSlideOver({
             </div>
 
             {/* Sticky Bottom Actions Bar */}
-            <div className="sticky bottom-0 z-20 p-4 border-t border-border/60 bg-card/95 backdrop-blur-md grid grid-cols-2 gap-2">
-              <OlxLinkActions ad={announcement} variant="default" size="sm" className="w-full text-xs font-bold py-2.5 shadow-sm" />
-              {onShowOnMap && (
+            <div className="sticky bottom-0 z-20 p-4 border-t border-border/60 bg-card/95 backdrop-blur-md space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <OlxLinkActions ad={announcement} variant="default" size="sm" className="w-full text-xs font-bold py-2.5 shadow-sm" />
+                {onShowOnMap && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playUiSound('pop');
+                      triggerHaptic(10);
+                      onShowOnMap();
+                      onClose();
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <span>Pokaż na mapie</span>
+                  </button>
+                )}
+              </div>
+
+              {onOpenTimeline && (
                 <button
                   type="button"
                   onClick={() => {
                     playUiSound('pop');
                     triggerHaptic(10);
-                    onShowOnMap();
-                    onClose();
+                    onOpenTimeline();
                   }}
-                  className="py-2.5 px-3 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                  className="w-full py-2 px-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <MapPin className="w-4 h-4 text-primary" />
-                  <span>Pokaż na mapie</span>
+                  <span>📋 Rejestr Aplikacji & Notatki Majstra</span>
                 </button>
               )}
             </div>

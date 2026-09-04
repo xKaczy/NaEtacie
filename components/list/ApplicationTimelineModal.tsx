@@ -1,17 +1,20 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, Clock, Calendar, Check, Briefcase, Phone, Heart } from 'lucide-react';
+import { X, CheckCircle2, Clock, Calendar, Check, Briefcase, Phone, Heart, FileEdit, MessageSquare, ExternalLink } from 'lucide-react';
 import type { DisplayAnnouncement } from '@/lib/types/display';
 import { STATUS_META, type ApplicationStatus, type TrackedApplication } from '@/lib/hooks/useApplicationTracking';
 import { Button } from '@/components/ui/button';
+import { getQuickSmsHref } from '@/lib/geo/transitRouting';
+import { triggerHaptic, getAnnouncementExternalUrl } from '@/lib/utils';
 
 export interface ApplicationTimelineModalProps {
   ad: DisplayAnnouncement | null;
   trackedApp?: TrackedApplication | null;
   isOpen: boolean;
   onClose: () => void;
-  onSetStatus: (status: ApplicationStatus) => void;
+  onSetStatus: (status: ApplicationStatus, note?: string) => void;
 }
 
 const TIMELINE_STEPS: Array<{ status: ApplicationStatus; title: string; desc: string; icon: string }> = [
@@ -28,6 +31,12 @@ export function ApplicationTimelineModal({
   onClose,
   onSetStatus,
 }: ApplicationTimelineModalProps) {
+  const [noteText, setNoteText] = useState(trackedApp?.note || '');
+  const [isEditingNote, setIsEditingNote] = useState(false);
+
+  useEffect(() => {
+    setNoteText(trackedApp?.note || '');
+  }, [trackedApp?.note, ad?.id]);
   if (!isOpen || !ad) return null;
 
   const currentStatus = trackedApp?.status || 'saved';
@@ -35,7 +44,7 @@ export function ApplicationTimelineModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
         <div className="absolute inset-0" onClick={onClose} />
 
         <motion.div
@@ -114,11 +123,113 @@ export function ApplicationTimelineModal({
                 );
               })}
             </div>
+
+            {/* 📝 Majster Notes & Direct Actions Box */}
+            <div className="p-3.5 rounded-xl border border-border/60 bg-muted/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <FileEdit className="w-3.5 h-3.5 text-primary" />
+                  Notatki kandydata / Ustalenia z majstrem
+                </span>
+                {trackedApp?.note && !isEditingNote && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingNote(true)}
+                    className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                  >
+                    Edytuj
+                  </button>
+                )}
+              </div>
+
+              {isEditingNote || !trackedApp?.note ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="np. Rozmawiałem z majstrem Markiem, stawka 45 zł/h na rękę, narzędzia zapewnia firma, start w czwartek o 7:00..."
+                    className="w-full text-xs p-2.5 rounded-lg border border-border bg-card focus:outline-none focus:ring-1 focus:ring-primary min-h-[70px] resize-none"
+                  />
+                  <div className="flex justify-end gap-2">
+                    {trackedApp?.note && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setNoteText(trackedApp.note);
+                          setIsEditingNote(false);
+                        }}
+                        className="h-7 text-xs"
+                      >
+                        Anuluj
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        triggerHaptic(10);
+                        onSetStatus(currentStatus, noteText.trim());
+                        setIsEditingNote(false);
+                      }}
+                      className="h-7 text-xs font-bold"
+                    >
+                      Zapisz notatkę
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground bg-card/80 p-2.5 rounded-lg border border-border/40 whitespace-pre-wrap">
+                  {trackedApp.note}
+                </p>
+              )}
+            </div>
+
+            {/* Quick Contact & Action Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {ad.phone && (
+                <>
+                  <a
+                    href={`tel:+48${ad.phone.replace(/\D/g, '')}`}
+                    onClick={() => {
+                      triggerHaptic(15);
+                      if (currentStatus === 'saved') onSetStatus('applied', noteText);
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>Zadzwoń teraz</span>
+                  </a>
+                  <a
+                    href={getQuickSmsHref({ phone: ad.phone, title: ad.title, district: ad.location_text }) || `sms:+48${ad.phone.replace(/\D/g, '')}`}
+                    onClick={() => {
+                      triggerHaptic(15);
+                      if (currentStatus === 'saved') onSetStatus('applied', noteText);
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Wyślij SMS</span>
+                  </a>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Footer */}
-          <div className="p-4 glass border-t border-border/50 bg-card/90 flex justify-end">
-            <Button onClick={onClose} variant="default" size="sm" className="font-bold text-xs">
+          <div className="p-4 glass border-t border-border/50 bg-card/90 flex items-center justify-between">
+            <a
+              href={getAnnouncementExternalUrl(ad)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              <span>Źródło oferty ({ad.source_portal || 'Portal'})</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <Button onClick={onClose} variant="default" size="sm" className="font-bold text-xs cursor-pointer">
               Gotowe
             </Button>
           </div>

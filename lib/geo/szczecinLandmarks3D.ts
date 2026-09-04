@@ -162,11 +162,144 @@ export function getSzczecinLandmarksGeoJson(): GeoJSON.FeatureCollection {
         yearBuilt: lm.yearBuilt,
         icon: lm.icon,
         lightColor: lm.lightColor,
+        glowColor: lm.glowColor,
         badge: lm.badge,
         description: lm.description,
         architecturalHighlight: lm.architecturalHighlight,
         constructionContext: lm.constructionContext,
       },
     })),
+  };
+}
+
+/**
+ * Generates 3D polygonal extrusion footprints for Szczecin iconic landmarks
+ * to render natively as WebGL fill-extrusions with real-time dynamic sunlight shading.
+ */
+export function getSzczecinLandmarks3DPolygonsGeoJson(): GeoJSON.FeatureCollection {
+  const toCoords = (
+    center: [number, number],
+    offsetsMeters: Array<[number, number]>
+  ): Array<[number, number]> => {
+    const [lng, lat] = center;
+    const latM = 111320;
+    const lngM = 111320 * Math.cos((lat * Math.PI) / 180);
+
+    const ring = offsetsMeters.map(([dx, dy]) => [
+      lng + dx / lngM,
+      lat + dy / latM,
+    ] as [number, number]);
+
+    // Close polygon ring if not closed
+    if (ring.length > 0 && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) {
+      ring.push(ring[0]);
+    }
+    return ring;
+  };
+
+  const features: GeoJSON.Feature[] = SZCZECIN_LANDMARKS_3D.map((lm) => {
+    let offsets: Array<[number, number]> = [];
+
+    switch (lm.id) {
+      case 'hanza-tower':
+        // Modern skyscraper tower with tapered crown
+        offsets = [
+          [-18, -14], [18, -14], [20, 0], [18, 14],
+          [-18, 14], [-20, 0]
+        ];
+        break;
+
+      case 'pazim':
+        // Iconic 12-sided cylindrical highrise on Plac Rodła
+        offsets = [];
+        for (let a = 0; a < 12; a++) {
+          const theta = (a * 2 * Math.PI) / 12;
+          offsets.push([Math.cos(theta) * 19, Math.sin(theta) * 19]);
+        }
+        break;
+
+      case 'zamek-ksiazat':
+        // Renaissance rectangular castle with central courtyard
+        offsets = [
+          [-35, -28], [35, -28], [38, 28], [-35, 28]
+        ];
+        break;
+
+      case 'waly-chrobrego':
+        // Monumental colonnade terrace along the Odra riverbank
+        offsets = [
+          [-18, -55], [22, -55], [22, 55], [-18, 55]
+        ];
+        break;
+
+      case 'dzwigozaury':
+        // Three historic portal cranes along Nabrzeże Starówka
+        offsets = [
+          [-12, -22], [14, -22], [14, 22], [-12, 22]
+        ];
+        break;
+
+      case 'filharmonia':
+        // Crystalline geometric ice-palace with faceted roofs
+        offsets = [
+          [-22, -18], [0, -22], [22, -18], [24, 18],
+          [0, 22], [-24, 18]
+        ];
+        break;
+
+      case 'morskie-centrum':
+        // Aerodynamic ship-hull profile on Łasztownia
+        offsets = [
+          [-32, -11], [25, -13], [35, 0], [25, 13],
+          [-32, 11], [-35, 0]
+        ];
+        break;
+
+      case 'stadion-pogon':
+        // Stadium bowl footprint with corner chamfers
+        offsets = [
+          [-65, -45], [65, -45], [75, -30], [75, 30],
+          [65, 45], [-65, 45], [-75, 30], [-75, -30]
+        ];
+        break;
+
+      default:
+        // Default circular footprint
+        offsets = [];
+        for (let a = 0; a < 8; a++) {
+          const theta = (a * 2 * Math.PI) / 8;
+          offsets.push([Math.cos(theta) * 15, Math.sin(theta) * 15]);
+        }
+        break;
+    }
+
+    const ring = toCoords(lm.coordinates, offsets);
+
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Polygon' as const,
+        coordinates: [ring],
+      },
+      properties: {
+        id: lm.id,
+        name: lm.name,
+        category: lm.category,
+        heightMeters: lm.heightMeters,
+        yearBuilt: lm.yearBuilt,
+        icon: lm.icon,
+        lightColor: lm.lightColor,
+        glowColor: lm.glowColor,
+        badge: lm.badge,
+        description: lm.description,
+        architecturalHighlight: lm.architecturalHighlight,
+        constructionContext: lm.constructionContext,
+      },
+    };
+  });
+
+  return {
+    type: 'FeatureCollection',
+    features,
   };
 }

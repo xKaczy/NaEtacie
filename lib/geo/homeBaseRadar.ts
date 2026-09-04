@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Home Base & Radius Radar Utility for Szczecin Workers.
  * Generates dynamic MapLibre circular boundary polygon and filters jobs within radar range.
  */
@@ -11,16 +11,30 @@ export const DEFAULT_RADAR_RADIUS_KM = 10;
  * Calculates Haversine distance in kilometers.
  */
 export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  if (
+    lat1 == null || lon1 == null || lat2 == null || lon2 == null ||
+    typeof lat1 !== 'number' || typeof lon1 !== 'number' ||
+    typeof lat2 !== 'number' || typeof lon2 !== 'number' ||
+    isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2) ||
+    !isFinite(lat1) || !isFinite(lon1) || !isFinite(lat2) || !isFinite(lon2)
+  ) {
+    return 0;
+  }
+
   const R = 6371; // Earth radius in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const clampedLat1 = Math.max(-90, Math.min(90, lat1));
+  const clampedLat2 = Math.max(-90, Math.min(90, lat2));
+
+  const dLat = ((clampedLat2 - clampedLat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
+    Math.cos((clampedLat1 * Math.PI) / 180) *
+      Math.cos((clampedLat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const safeA = Math.max(0, Math.min(1, a));
+  const c = 2 * Math.atan2(Math.sqrt(safeA), Math.sqrt(Math.max(0, 1 - safeA)));
   return Math.round(R * c * 10) / 10;
 }
 
@@ -35,16 +49,26 @@ export function generateRadarGeoJsonCircle(
   const [lng, lat] = center;
   const coords: Array<[number, number]> = [];
 
-  const distanceX = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
-  const distanceY = radiusKm / 110.574;
+  const safeLng = typeof lng === 'number' && isFinite(lng) ? lng : 14.5528;
+  const safeLat = typeof lat === 'number' && isFinite(lat) ? Math.max(-89.5, Math.min(89.5, lat)) : 53.4285;
+  const safeRadius = Math.max(0, typeof radiusKm === 'number' && isFinite(radiusKm) ? radiusKm : 0);
 
-  for (let i = 0; i < points; i++) {
-    const theta = (i / points) * (2 * Math.PI);
-    const x = lng + distanceX * Math.cos(theta);
-    const y = lat + distanceY * Math.sin(theta);
-    coords.push([x, y]);
+  const cosLat = Math.cos((safeLat * Math.PI) / 180);
+  const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : Math.abs(cosLat);
+
+  const distanceX = safeRadius / (111.32 * safeCosLat);
+  const distanceY = safeRadius / 110.574;
+  const numPoints = Math.max(12, Math.min(128, typeof points === 'number' && isFinite(points) ? points : 64));
+
+  for (let i = 0; i < numPoints; i++) {
+    const theta = (i / numPoints) * (2 * Math.PI);
+    const x = safeLng + distanceX * Math.cos(theta);
+    const y = safeLat + distanceY * Math.sin(theta);
+    coords.push([Number(x.toFixed(7)), Number(y.toFixed(7))]);
   }
-  coords.push(coords[0]); // close loop
+  if (coords.length > 0) {
+    coords.push(coords[0]); // close loop
+  }
 
   return {
     type: 'Feature',

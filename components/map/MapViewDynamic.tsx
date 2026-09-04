@@ -2,13 +2,13 @@
 
 import dynamic from 'next/dynamic';
 import type { MapViewProps } from './MapView';
+import { MapErrorBoundary } from './MapErrorBoundary';
 
 /**
- * Dynamically imported MapView with SSR disabled.
- * React-Leaflet requires the DOM (window, document) which is not available
- * during server-side rendering in Next.js.
+ * Dynamically imported MapView with SSR disabled and resilient ErrorBoundary protection.
+ * MapLibre requires DOM (window, canvas, WebGL) which is not available during SSR.
  */
-const MapView = dynamic(() => import('./MapView'), {
+const MapViewInternal = dynamic(() => import('./MapView'), {
   ssr: false,
   loading: () => (
     <div
@@ -47,5 +47,13 @@ const MapView = dynamic(() => import('./MapView'), {
   ),
 });
 
-export default MapView;
+export default function MapView(props: MapViewProps) {
+  return (
+    <MapErrorBoundary>
+      <MapViewInternal {...props} />
+    </MapErrorBoundary>
+  );
+}
+
 export type { MapViewProps };
+

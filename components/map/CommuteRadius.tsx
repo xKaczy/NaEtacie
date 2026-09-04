@@ -10,32 +10,7 @@ export interface CommuteRadiusProps {
   radiusKm: number;
 }
 
-/**
- * Calculates GeoJSON Polygon coordinates for a circle given a center and radius in km.
- */
-function createGeoJsonCircle(center: [number, number], radiusKm: number, points = 64) {
-  const [lng, lat] = center;
-  const coords = [];
-  const distanceX = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
-  const distanceY = radiusKm / 110.574;
-
-  for (let i = 0; i < points; i++) {
-    const theta = (i / points) * (2 * Math.PI);
-    const x = distanceX * Math.cos(theta);
-    const y = distanceY * Math.sin(theta);
-    coords.push([lng + x, lat + y]);
-  }
-  coords.push(coords[0]);
-
-  return {
-    type: 'Feature' as const,
-    geometry: {
-      type: 'Polygon' as const,
-      coordinates: [coords],
-    },
-    properties: {},
-  };
-}
+import { createGeoJsonCircle, isValidCoordinate } from './utils';
 
 /**
  * Draws a translucent commute radius circle and a home pin on MapLibre GL JS map.
@@ -49,43 +24,48 @@ export function CommuteRadius({
   const homeMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !isValidCoordinate(homeLat, homeLng)) return;
 
     const sourceId = 'commute-radius-source';
     const fillLayerId = 'commute-radius-fill';
     const lineLayerId = 'commute-radius-line';
 
-    const circleData = createGeoJsonCircle([homeLng, homeLat], radiusKm);
+    const safeRadiusKm = Math.max(0.1, Math.min(200, Number.isFinite(radiusKm) ? radiusKm : 10));
+    const circleData = createGeoJsonCircle([homeLng, homeLat], safeRadiusKm);
 
-    // Add GeoJSON source for commute circle
-    if (!map.getSource(sourceId)) {
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: circleData,
-      });
+    try {
+      // Add GeoJSON source for commute circle
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: circleData,
+        });
 
-      map.addLayer({
-        id: fillLayerId,
-        type: 'fill',
-        source: sourceId,
-        paint: {
-          'fill-color': '#2563eb',
-          'fill-opacity': 0.08,
-        },
-      });
+        map.addLayer({
+          id: fillLayerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': '#2563eb',
+            'fill-opacity': 0.08,
+          },
+        });
 
-      map.addLayer({
-        id: lineLayerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': '#2563eb',
-          'line-width': 2,
-          'line-dasharray': [3, 2],
-        },
-      });
-    } else {
-      (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(circleData);
+        map.addLayer({
+          id: lineLayerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#2563eb',
+            'line-width': 2,
+            'line-dasharray': [3, 2],
+          },
+        });
+      } else {
+        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(circleData);
+      }
+    } catch (err) {
+      console.warn('[CommuteRadius] Failed to add/update circle:', err);
     }
 
     // Home icon marker
@@ -102,14 +82,18 @@ export function CommuteRadius({
     homeMarkerRef.current = homeMarker;
 
     return () => {
-      homeMarker.remove();
+      try {
+        homeMarker.remove();
+      } catch {}
       homeMarkerRef.current = null;
 
-      if (map.getStyle()) {
-        if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
-        if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
-      }
+      try {
+        if (map.getStyle()) {
+          if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
+          if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+          if (map.getSource(sourceId)) map.removeSource(sourceId);
+        }
+      } catch {}
     };
   }, [map, homeLat, homeLng, radiusKm]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import maplibregl from 'maplibre-gl';
 
 export type TransportMode = 'car' | 'bike' | 'walk';
@@ -40,20 +40,28 @@ function generateIsochronePolygon(
   points = 48
 ): Array<[number, number]> {
   const [lng, lat] = center;
-  const speedKmh = SPEED_KMH[mode];
-  const radiusKm = (speedKmh * (minutes / 60));
+  if (!isFinite(lng) || !isFinite(lat)) return [];
+
+  const safeMinutes = Math.max(1, Math.min(180, typeof minutes === 'number' && isFinite(minutes) ? minutes : 15));
+  const speedKmh = SPEED_KMH[mode] || 38.0;
+  const radiusKm = speedKmh * (safeMinutes / 60);
+
+  const safeLat = Math.max(-89.5, Math.min(89.5, lat));
+  const cosLat = Math.cos((safeLat * Math.PI) / 180);
+  const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : Math.abs(cosLat);
 
   const coords: Array<[number, number]> = [];
-  const distanceX = radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180));
+  const distanceX = radiusKm / (111.32 * safeCosLat);
   const distanceY = radiusKm / 110.574;
+  const numPoints = Math.max(12, Math.min(128, typeof points === 'number' && isFinite(points) ? points : 48));
 
-  for (let i = 0; i < points; i++) {
-    const theta = (i / points) * (2 * Math.PI);
+  for (let i = 0; i < numPoints; i++) {
+    const theta = (i / numPoints) * (2 * Math.PI);
     // Add subtle road factor variability
     const roadFactor = 0.85 + 0.15 * Math.sin(theta * 3);
     const x = distanceX * Math.cos(theta) * roadFactor;
     const y = distanceY * Math.sin(theta) * roadFactor;
-    coords.push([lng + x, lat + y]);
+    coords.push([Number((lng + x).toFixed(7)), Number((lat + y).toFixed(7))]);
   }
 
   return coords;
@@ -83,6 +91,8 @@ export function MapIsochrone({
       setActiveIsochrone(coords);
       onIsochroneChange(coords);
 
+      if (!coords || coords.length < 3) return;
+
       const sourceId = 'isochrone-source';
       const fillLayerId = 'isochrone-fill';
       const lineLayerId = 'isochrone-line';
@@ -102,34 +112,38 @@ export function MapIsochrone({
         ],
       };
 
-      if (!map.getSource(sourceId)) {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: geojson,
-        });
+      try {
+        if (!map.getSource(sourceId)) {
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: geojson,
+          });
 
-        map.addLayer({
-          id: fillLayerId,
-          type: 'fill',
-          source: sourceId,
-          paint: {
-            'fill-color': targetMode === 'car' ? '#3b82f6' : targetMode === 'bike' ? '#10b981' : '#f59e0b',
-            'fill-opacity': 0.12,
-          },
-        });
+          map.addLayer({
+            id: fillLayerId,
+            type: 'fill',
+            source: sourceId,
+            paint: {
+              'fill-color': targetMode === 'car' ? '#3b82f6' : targetMode === 'bike' ? '#10b981' : '#f59e0b',
+              'fill-opacity': 0.12,
+            },
+          });
 
-        map.addLayer({
-          id: lineLayerId,
-          type: 'line',
-          source: sourceId,
-          paint: {
-            'line-color': targetMode === 'car' ? '#2563eb' : targetMode === 'bike' ? '#059669' : '#d97706',
-            'line-width': 2,
-            'line-dasharray': [4, 2],
-          },
-        });
-      } else {
-        (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);
+          map.addLayer({
+            id: lineLayerId,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': targetMode === 'car' ? '#2563eb' : targetMode === 'bike' ? '#059669' : '#d97706',
+              'line-width': 2,
+              'line-dasharray': [4, 2],
+            },
+          });
+        } else {
+          (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson);
+        }
+      } catch (err) {
+        console.warn('[MapIsochrone] Failed to set isochrone data:', err);
       }
     },
     [map, homeLat, homeLng, onIsochroneChange]
@@ -144,11 +158,26 @@ export function MapIsochrone({
       const fillLayerId = 'isochrone-fill';
       const lineLayerId = 'isochrone-line';
 
-      if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
-      if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      try {
+        if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId);
+        if (map.getLayer(lineLayerId)) map.removeLayer(lineLayerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      } catch {}
     }
   }, [map, onIsochroneChange]);
+
+  // Clean up isochrone layers and source on component unmount
+  useEffect(() => {
+    return () => {
+      if (map) {
+        try {
+          if (map.getLayer('isochrone-fill')) map.removeLayer('isochrone-fill');
+          if (map.getLayer('isochrone-line')) map.removeLayer('isochrone-line');
+          if (map.getSource('isochrone-source')) map.removeSource('isochrone-source');
+        } catch {}
+      }
+    };
+  }, [map]);
 
   return (
     <div

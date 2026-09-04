@@ -61,7 +61,7 @@ export function CommandPaletteModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-md">
+      <div className="fixed inset-0 z-[70] flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-md">
         <div className="absolute inset-0" onClick={onClose} />
 
         <motion.div

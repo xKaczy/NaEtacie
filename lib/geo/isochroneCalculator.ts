@@ -42,13 +42,22 @@ export function generateSzczecinIsochrone(
   minutes = 20,
   mode: 'car' | 'transit' = 'car'
 ): IsochroneFeature {
+  const safeLng = typeof originLng === 'number' && isFinite(originLng) ? originLng : 14.5528;
+  const safeLat = typeof originLat === 'number' && isFinite(originLat)
+    ? Math.max(-89.5, Math.min(89.5, originLat))
+    : 53.4285;
+  const safeMinutes = Math.max(1, Math.min(180, typeof minutes === 'number' && isFinite(minutes) ? minutes : 20));
+
   // Base speed in km/h based on mode (accounting for traffic)
   const avgSpeedKmh = mode === 'car' ? 38 : 22;
-  const maxDistanceKm = (avgSpeedKmh * (minutes / 60));
+  const maxDistanceKm = avgSpeedKmh * (safeMinutes / 60);
 
-  // Convert km to approximate degrees (1 deg lat ~ 111km, 1 deg lng ~ 66km at 53.4 lat)
-  const latRadius = maxDistanceKm / 111.0;
-  const lngRadius = maxDistanceKm / 66.0;
+  const cosLat = Math.cos((safeLat * Math.PI) / 180);
+  const safeCosLat = Math.abs(cosLat) < 1e-6 ? 1e-6 : Math.abs(cosLat);
+
+  // Convert km to approximate degrees with geodesic accuracy
+  const latRadius = maxDistanceKm / 110.574;
+  const lngRadius = maxDistanceKm / (111.32 * safeCosLat);
 
   const pointsCount = 36;
   const polygonRing: number[][] = [];
@@ -72,8 +81,8 @@ export function generateSzczecinIsochrone(
       scaleY *= 1.15;
     }
 
-    const lng = originLng + lngRadius * scaleX * Math.cos(angle);
-    const lat = originLat + latRadius * scaleY * Math.sin(angle);
+    const lng = safeLng + lngRadius * scaleX * Math.cos(angle);
+    const lat = safeLat + latRadius * scaleY * Math.sin(angle);
     polygonRing.push([Number(lng.toFixed(6)), Number(lat.toFixed(6))]);
   }
 

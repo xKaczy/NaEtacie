@@ -15,6 +15,7 @@ export interface SunlightPreset {
   skyColor: string;
   horizonColor: string;
   fogColor: string;
+  waterColor: string;
   buildingBaseColor: string;
   buildingTopColor: string;
   buildingOpacity: number;
@@ -26,13 +27,14 @@ export const SUNLIGHT_PRESETS: Record<Exclude<SunlightMode, 'auto'>, SunlightPre
     id: 'morning',
     name: 'Poranek Fachowca (06:30)',
     icon: '☕',
-    lightColor: '#fde68a',
-    lightIntensity: 0.62,
-    lightPosition: [1.6, 105, 18], // Low East angle, long morning shadows for external crews
-    skyColor: '#fef3c7',
-    horizonColor: '#fcd34d',
-    fogColor: '#fffbeb',
-    buildingBaseColor: '#64748b',
+    lightColor: '#fef08a',
+    lightIntensity: 0.64,
+    lightPosition: [1.5, 105, 22], // East-South-East morning sun, warm golden angles on Odra
+    skyColor: '#fed7aa',
+    horizonColor: '#fde047',
+    fogColor: '#fefce8',
+    waterColor: '#0e3d59',
+    buildingBaseColor: '#475569',
     buildingTopColor: '#f59e0b',
     buildingOpacity: 0.88,
     ambientGlowColor: '#fbbf24',
@@ -42,58 +44,62 @@ export const SUNLIGHT_PRESETS: Record<Exclude<SunlightMode, 'auto'>, SunlightPre
     name: 'Jasny Dzień',
     icon: '☀️',
     lightColor: '#ffffff',
-    lightIntensity: 0.55,
-    lightPosition: [1.25, 210, 30], // midday sun south-west
-    skyColor: '#e2e8f0',
-    horizonColor: '#bae6fd',
-    fogColor: '#f0f9ff',
-    buildingBaseColor: '#cbd5e1',
-    buildingTopColor: '#2563eb',
+    lightIntensity: 0.58,
+    lightPosition: [1.3, 210, 35], // Midday sun South-West high in sky
+    skyColor: '#bae6fd',
+    horizonColor: '#e0f2fe',
+    fogColor: '#f8fafc',
+    waterColor: '#0284c7',
+    buildingBaseColor: '#334155',
+    buildingTopColor: '#0284c7',
     buildingOpacity: 0.85,
-    ambientGlowColor: '#3b82f6',
+    ambientGlowColor: '#38bdf8',
   },
   golden_hour: {
     id: 'golden_hour',
     name: 'Złota Godzina',
     icon: '🌅',
-    lightColor: '#fbbf24',
-    lightIntensity: 0.7,
-    lightPosition: [1.5, 260, 70], // low warm evening sun over Odra river
-    skyColor: '#fed7aa',
-    horizonColor: '#f97316',
-    fogColor: '#ffedd5',
-    buildingBaseColor: '#78716c',
+    lightColor: '#f59e0b',
+    lightIntensity: 0.75,
+    lightPosition: [1.6, 260, 68], // Low warm evening sun over Odra river & Łasztownia
+    skyColor: '#fdba74',
+    horizonColor: '#ea580c',
+    fogColor: '#fff7ed',
+    waterColor: '#1e3a5f',
+    buildingBaseColor: '#292524',
     buildingTopColor: '#f59e0b',
     buildingOpacity: 0.9,
-    ambientGlowColor: '#f59e0b',
+    ambientGlowColor: '#f97316',
   },
   sunset: {
     id: 'sunset',
     name: 'Zachód Słońca',
     icon: '🌆',
-    lightColor: '#f43f5e',
-    lightIntensity: 0.65,
-    lightPosition: [1.7, 280, 80],
-    skyColor: '#fda4af',
-    horizonColor: '#be123c',
-    fogColor: '#ffe4e6',
-    buildingBaseColor: '#475569',
+    lightColor: '#fb7185',
+    lightIntensity: 0.68,
+    lightPosition: [1.7, 280, 82], // Deep dusk twilight west of Szczecin
+    skyColor: '#f43f5e',
+    horizonColor: '#9f1239',
+    fogColor: '#1c1917',
+    waterColor: '#1e1b4b',
+    buildingBaseColor: '#1e1b4b',
     buildingTopColor: '#e11d48',
     buildingOpacity: 0.92,
-    ambientGlowColor: '#e11d48',
+    ambientGlowColor: '#f43f5e',
   },
   night_cyberpunk: {
     id: 'night_cyberpunk',
     name: 'Nocny Szczecin (Neon 3D)',
     icon: '🌃',
     lightColor: '#38bdf8',
-    lightIntensity: 0.4,
-    lightPosition: [1.1, 0, 45],
-    skyColor: '#0f172a',
+    lightIntensity: 0.45,
+    lightPosition: [1.2, 340, 48], // Cool directional moonlit neon glow
+    skyColor: '#020617',
     horizonColor: '#0369a1',
-    fogColor: '#090d16',
-    buildingBaseColor: '#090d16',
-    buildingTopColor: '#0284c7',
+    fogColor: '#060a14',
+    waterColor: '#03172e',
+    buildingBaseColor: '#0b1329',
+    buildingTopColor: '#06b6d4',
     buildingOpacity: 0.95,
     ambientGlowColor: '#10b981',
   },
@@ -123,7 +129,8 @@ export function getSunlightPreset(mode: SunlightMode, date = new Date()): Sunlig
 }
 
 /**
- * Applies dynamic 3D sunlight, fog atmosphere, and building shading to an active MapLibre instance.
+ * Applies dynamic 3D sunlight, directional shadows, fog atmosphere, and building shading
+ * to an active MapLibre instance.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function applySunlightToMap(map: any, mode: SunlightMode): void {
@@ -131,27 +138,33 @@ export function applySunlightToMap(map: any, mode: SunlightMode): void {
   const preset = getSunlightPreset(mode);
 
   try {
-    // 1. Set ambient viewport light
+    // 1. Set ambient & directional sunlight anchored geographically ('map')
     if (typeof map.setLight === 'function') {
       map.setLight({
-        anchor: 'viewport',
+        anchor: 'map', // Anchor to map coordinates for realistic geographical sun azimuth
         color: preset.lightColor,
         intensity: preset.lightIntensity,
         position: preset.lightPosition,
       });
     }
 
-    // 2. Set dynamic fog / atmosphere if supported by MapLibre GL
+    // 2. Set dynamic atmospheric fog with depth blending
     if (typeof map.setFog === 'function') {
       map.setFog({
         color: preset.fogColor,
         'high-color': preset.skyColor,
-        'horizon-blend': 0.15,
-        range: [0.5, 10],
+        'horizon-blend': 0.2,
+        'space-color': preset.skyColor,
+        range: [0.5, 12],
       });
     }
 
-    // 3. Adjust 3D building fill-extrusion colors if layer exists
+    // 3. Dynamic Baltic Slate Water synchronization
+    if (typeof map.getLayer === 'function' && map.getLayer('water')) {
+      map.setPaintProperty('water', 'fill-color', preset.waterColor);
+    }
+
+    // 4. Adjust 3D building fill-extrusion colors and vertical lighting gradients
     const buildingLayers = ['3d-buildings', '3d-buildings-baltic'];
     buildingLayers.forEach((layerId) => {
       if (typeof map.getLayer === 'function' && map.getLayer(layerId)) {
@@ -162,12 +175,16 @@ export function applySunlightToMap(map: any, mode: SunlightMode): void {
           0, preset.buildingBaseColor,
           35, preset.buildingBaseColor,
           70, preset.buildingTopColor,
-          130, preset.ambientGlowColor,
+          120, preset.ambientGlowColor,
         ]);
         map.setPaintProperty(layerId, 'fill-extrusion-opacity', preset.buildingOpacity);
+        try {
+          map.setPaintProperty(layerId, 'fill-extrusion-vertical-gradient', true);
+        } catch { /* ignored if unsupported in style */ }
       }
     });
   } catch {
     /* Non-fatal if map style is currently reloading or unsupported */
   }
 }
+

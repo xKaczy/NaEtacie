@@ -30,8 +30,13 @@ import type { DisplayAnnouncement } from '@/lib/types/display';
 import { useToast } from '@/components/feedback/ToastProvider';
 import { ApplicationKanban } from './ApplicationKanban';
 
+import type { ApplicationStatus, TrackedApplication } from '@/lib/hooks/useApplicationTracking';
+
 export interface FavoritesViewProps {
   favoriteAds: DisplayAnnouncement[];
+  tracked?: Record<string, TrackedApplication>;
+  onSetStatus?: (id: string, status: ApplicationStatus, note?: string) => void;
+  onOpenTimeline?: (ad: DisplayAnnouncement) => void;
   onToggleFavorite: (id: string) => void;
   onShowOnMap: (id: string) => void;
   onQuickView: (ad: DisplayAnnouncement) => void;
@@ -44,6 +49,9 @@ export interface FavoritesViewProps {
 
 export function FavoritesView({
   favoriteAds,
+  tracked = {},
+  onSetStatus,
+  onOpenTimeline,
   onToggleFavorite,
   onShowOnMap,
   onQuickView,
@@ -233,8 +241,11 @@ export function FavoritesView({
       {viewMode === 'kanban' ? (
         <ApplicationKanban
           favoriteAds={filteredAds}
+          tracked={tracked}
+          onSetStatus={onSetStatus}
           onShowOnMap={onShowOnMap}
           onQuickView={onQuickView}
+          onOpenTimeline={onOpenTimeline}
         />
       ) : (
         <>

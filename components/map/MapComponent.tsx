@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MaskedAnnouncement } from '@/lib/types/announcement';
-import { filterGeocodedAnnouncements, formatPrice } from './utils';
+import { filterGeocodedAnnouncements, formatPrice, generateSpiderfyPositions } from './utils';
 import { getAnnouncementExternalUrl, triggerHaptic } from '@/lib/utils';
 import { SearchAreaButton } from './SearchAreaButton';
 import { Map3DControlHub, Map3DState } from './Map3DControlHub';
@@ -50,6 +50,35 @@ const ESRI_SATELLITE_STYLE: maplibregl.StyleSpecification = {
   ],
 };
 
+const FALLBACK_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    'osm-raster': {
+      type: 'raster',
+      tiles: [
+        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    },
+  },
+  layers: [
+    {
+      id: 'fallback-background',
+      type: 'background',
+      paint: { 'background-color': '#e2e8f0' },
+    },
+    {
+      id: 'osm-tiles',
+      type: 'raster',
+      source: 'osm-raster',
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+};
+
 export interface MapComponentProps {
   announcements: MaskedAnnouncement[];
   onMarkerClick?: (id: string) => void;
@@ -71,6 +100,8 @@ export default function MapComponent({
   const [isSatellite, setIsSatellite] = useState(false);
   const [selectedMegaProject, setSelectedMegaProject] = useState<MegaConstructionProject | null>(null);
   const [selectedLandmark, setSelectedLandmark] = useState<SzczecinLandmark3D | null>(null);
+  const [isContextLost, setIsContextLost] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const landmarkMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   // 3D Master State
@@ -108,14 +139,72 @@ export default function MapComponent({
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: CARTO_GL_STYLE,
-      center: SZCZECIN_CENTER,
-      zoom: DEFAULT_ZOOM,
-      pitch: DEFAULT_PITCH,
-      bearing: -15,
-      attributionControl: false,
+    let map: maplibregl.Map | null = null;
+    let usedFallback = false;
+
+    try {
+      map = new maplibregl.Map({
+        container: mapContainerRef.current,
+        style: CARTO_GL_STYLE,
+        center: SZCZECIN_CENTER,
+        zoom: DEFAULT_ZOOM,
+        pitch: DEFAULT_PITCH,
+        bearing: -15,
+        attributionControl: false,
+      });
+    } catch (err) {
+      console.warn('[MapComponent] WebGL primary initialization failed, attempting fallback:', err);
+      try {
+        map = new maplibregl.Map({
+          container: mapContainerRef.current,
+          style: FALLBACK_STYLE,
+          center: SZCZECIN_CENTER,
+          zoom: DEFAULT_ZOOM,
+          pitch: 0,
+          bearing: 0,
+          attributionControl: false,
+        });
+        usedFallback = true;
+      } catch (fallbackErr) {
+        console.error('[MapComponent] All map initializations failed:', fallbackErr);
+        setMapError('Brak wsparcia dla akceleracji WebGL w przeglądarce.');
+        return;
+      }
+    }
+
+    const canvas = map.getCanvas();
+    const handleContextLost = (e: Event) => {
+      e.preventDefault(); // Informs the browser that the web application will handle context recovery
+      console.warn('[MapComponent] WebGL context lost.');
+      setIsContextLost(true);
+      if (orbitFrameRef.current) {
+        cancelAnimationFrame(orbitFrameRef.current);
+        orbitFrameRef.current = null;
+      }
+    };
+    const handleContextRestored = () => {
+      console.info('[MapComponent] WebGL context restored.');
+      setIsContextLost(false);
+    };
+
+    if (canvas) {
+      canvas.addEventListener('webglcontextlost', handleContextLost, false);
+      canvas.addEventListener('webglcontextrestored', handleContextRestored, false);
+    }
+
+    map.on('webglcontextlost', () => setIsContextLost(true));
+    map.on('webglcontextrestored', () => setIsContextLost(false));
+
+    map.on('error', (e) => {
+      console.warn('[MapComponent] MapLibre error:', e.error?.message || e);
+      if (!usedFallback && map && !map.isStyleLoaded()) {
+        usedFallback = true;
+        try {
+          map.setStyle(FALLBACK_STYLE);
+        } catch {
+          setMapError('Nie udało się załadować kafelków mapy.');
+        }
+      }
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
@@ -130,7 +219,7 @@ export default function MapComponent({
         const layers = map.getStyle().layers || [];
         const labelLayerId = layers.find((l) => l.type === 'symbol' && l.layout?.['text-field'])?.id;
 
-        if (!map.getLayer('3d-buildings')) {
+        if (!map.getLayer('3d-buildings') && map.getSource('carto')) {
           map.addLayer(
             {
               id: '3d-buildings',
@@ -167,11 +256,23 @@ export default function MapComponent({
     mapRef.current = map;
 
     return () => {
-      map.off('moveend', handleMoveEnd);
+      if (canvas) {
+        canvas.removeEventListener('webglcontextlost', handleContextLost, false);
+        canvas.removeEventListener('webglcontextrestored', handleContextRestored, false);
+      }
+      map?.off('moveend', handleMoveEnd);
       if (orbitFrameRef.current) cancelAnimationFrame(orbitFrameRef.current);
-      markersRef.current.forEach((m) => m.remove());
-      craneMarkersRef.current.forEach((m) => m.remove());
-      map.remove();
+      markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
+      markersRef.current = [];
+      craneMarkersRef.current.forEach((m) => { try { m.remove(); } catch {} });
+      craneMarkersRef.current = [];
+      landmarkMarkersRef.current.forEach((m) => { try { m.remove(); } catch {} });
+      landmarkMarkersRef.current = [];
+      try {
+        map?.remove();
+      } catch (err) {
+        console.warn('[MapComponent] Error removing map:', err);
+      }
       mapRef.current = null;
     };
   }, []);
@@ -466,85 +567,111 @@ export default function MapComponent({
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
 
-    geocodedAnnouncements.forEach((announcement) => {
-      const price = announcement.price;
-      let badgeColorClass = 'badge-slate';
-      let priceLabel = 'Oferta';
-
-      if (price) {
-        priceLabel = `${Math.round(price).toLocaleString('pl-PL')} zł`;
-        if (price >= 8500) badgeColorClass = 'badge-emerald';
-        else if (price >= 6000) badgeColorClass = 'badge-gold';
-        else badgeColorClass = 'badge-blue';
+    // Group announcements by coordinates (~11m resolution: 4 decimal places)
+    // to detect overlapping pins in Szczecin (e.g. central addresses) and fan them out
+    const coordGroups = new Map<string, { center: [number, number]; ads: typeof geocodedAnnouncements }>();
+    geocodedAnnouncements.forEach((ad) => {
+      const key = `${ad.latitude!.toFixed(4)},${ad.longitude!.toFixed(4)}`;
+      const existing = coordGroups.get(key);
+      if (existing) {
+        existing.ads.push(ad);
       } else {
-        badgeColorClass = 'badge-purple';
-        priceLabel = 'Estymacja AI';
+        coordGroups.set(key, {
+          center: [ad.longitude!, ad.latitude!],
+          ads: [ad],
+        });
       }
+    });
 
-      const el = document.createElement('div');
-      el.className = `map-price-pin ${badgeColorClass}`;
-      el.innerHTML = `<div class="map-price-badge ${badgeColorClass}">${priceLabel}</div>`;
+    const zoom = map.getZoom();
 
-      const redirectUrl = getAnnouncementExternalUrl(announcement);
-      const contactPhone = (announcement as { contact_info?: string | null }).contact_info;
-      const phoneDigits = contactPhone ? contactPhone.replace(/\D/g, '') : null;
-      const escapeHtml = (str: string | null | undefined): string => {
-        if (!str) return '';
-        return String(str)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      };
+    coordGroups.forEach(({ center, ads: group }) => {
+      const isOverlapping = group.length > 1;
+      const spiderPositions = isOverlapping
+        ? generateSpiderfyPositions(center, group.length, zoom)
+        : [center];
 
-      const popupHtml = `
-        <div class="map-popup p-3 max-w-xs bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700">
-          <div class="flex items-center justify-between gap-2 mb-1">
-            <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-medium capitalize">
-              ${escapeHtml(announcement.source_portal)} • ${escapeHtml(announcement.category || 'budowa')}
-            </span>
-            <span class="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-              🛡️ Bezpieczna
-            </span>
+      group.forEach((announcement, idx) => {
+        const targetCoords = isOverlapping ? spiderPositions[idx] || center : center;
+        const price = announcement.price;
+        let badgeColorClass = 'badge-slate';
+        let priceLabel = 'Oferta';
+
+        if (price) {
+          priceLabel = `${Math.round(price).toLocaleString('pl-PL')} zł`;
+          if (price >= 8500) badgeColorClass = 'badge-emerald';
+          else if (price >= 6000) badgeColorClass = 'badge-gold';
+          else badgeColorClass = 'badge-blue';
+        } else {
+          badgeColorClass = 'badge-purple';
+          priceLabel = 'Estymacja AI';
+        }
+
+        const el = document.createElement('div');
+        el.className = `map-price-pin ${badgeColorClass}`;
+        el.innerHTML = `<div class="map-price-badge ${badgeColorClass}">${priceLabel}</div>`;
+
+        const redirectUrl = getAnnouncementExternalUrl(announcement);
+        const contactPhone = (announcement as { contact_info?: string | null }).contact_info;
+        const phoneDigits = contactPhone ? contactPhone.replace(/\D/g, '') : null;
+        const escapeHtml = (str: string | null | undefined): string => {
+          if (!str) return '';
+          return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        };
+
+        const popupHtml = `
+          <div class="map-popup p-3 max-w-xs bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="text-xs px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-medium capitalize">
+                ${escapeHtml(announcement.source_portal)} • ${escapeHtml(announcement.category || 'budowa')}
+              </span>
+              <span class="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                🛡️ Bezpieczna
+              </span>
+            </div>
+
+            <h3 class="map-popup__title font-bold text-sm text-slate-100 line-clamp-2 leading-snug mb-1">${escapeHtml(announcement.title)}</h3>
+            <p class="map-popup__location text-xs text-slate-400 mb-2">📍 ${escapeHtml(announcement.location_text)}</p>
+            <p class="map-popup__price text-base font-bold text-emerald-400 mb-3">${escapeHtml(formatPrice(announcement.price))}</p>
+
+            <div class="flex flex-col gap-1.5">
+              <a href="${escapeHtml(redirectUrl)}" target="_blank" rel="noopener noreferrer" class="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs rounded-lg text-center shadow transition-transform active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
+                <span>Otwórz aktualną ofertę</span>
+                <span>🚀</span>
+              </a>
+
+              ${phoneDigits ? `
+                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                  <a href="tel:+48${escapeHtml(phoneDigits)}" class="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-md text-center flex items-center justify-center gap-1">
+                    <span>📞 Zadzwoń</span>
+                  </a>
+                  <a href="https://wa.me/48${escapeHtml(phoneDigits)}" target="_blank" rel="noopener noreferrer" class="py-1.5 px-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md text-center flex items-center justify-center gap-1">
+                    <span>💬 WhatsApp</span>
+                  </a>
+                </div>
+              ` : ''}
+            </div>
           </div>
+        `;
 
-          <h3 class="map-popup__title font-bold text-sm text-slate-100 line-clamp-2 leading-snug mb-1">${escapeHtml(announcement.title)}</h3>
-          <p class="map-popup__location text-xs text-slate-400 mb-2">📍 ${escapeHtml(announcement.location_text)}</p>
-          <p class="map-popup__price text-base font-bold text-emerald-400 mb-3">${escapeHtml(formatPrice(announcement.price))}</p>
+        const popup = new maplibregl.Popup({ offset: 15, closeButton: false }).setHTML(popupHtml);
 
-          <div class="flex flex-col gap-1.5">
-            <a href="${escapeHtml(redirectUrl)}" target="_blank" rel="noopener noreferrer" class="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold text-xs rounded-lg text-center shadow transition-transform active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer">
-              <span>Otwórz aktualną ofertę</span>
-              <span>🚀</span>
-            </a>
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat(targetCoords)
+          .setPopup(popup)
+          .addTo(map);
 
-            ${phoneDigits ? `
-              <div class="grid grid-cols-2 gap-1.5 pt-1">
-                <a href="tel:+48${escapeHtml(phoneDigits)}" class="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-md text-center flex items-center justify-center gap-1">
-                  <span>📞 Zadzwoń</span>
-                </a>
-                <a href="https://wa.me/48${escapeHtml(phoneDigits)}" target="_blank" rel="noopener noreferrer" class="py-1.5 px-2 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md text-center flex items-center justify-center gap-1">
-                  <span>💬 WhatsApp</span>
-                </a>
-              </div>
-            ` : ''}
-          </div>
-        </div>
-      `;
+        el.addEventListener('click', () => {
+          onMarkerClick?.(announcement.deduplication_key);
+        });
 
-      const popup = new maplibregl.Popup({ offset: 15, closeButton: false }).setHTML(popupHtml);
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([announcement.longitude!, announcement.latitude!])
-        .setPopup(popup)
-        .addTo(map);
-
-      el.addEventListener('click', () => {
-        onMarkerClick?.(announcement.deduplication_key);
+        markersRef.current.push(marker);
       });
-
-      markersRef.current.push(marker);
     });
   }, [geocodedAnnouncements, onMarkerClick]);
 
@@ -602,6 +729,14 @@ export default function MapComponent({
   return (
     <div className="relative w-full h-full min-h-[450px]">
       <div ref={mapContainerRef} className="w-full h-full" />
+
+      {/* WebGL Context Lost or Map Error Banner */}
+      {(isContextLost || mapError) && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-amber-950/90 text-amber-200 border border-amber-500/50 rounded-xl px-4 py-2 shadow-xl flex items-center gap-2 text-xs font-semibold backdrop-blur-md">
+          <span>⚠️</span>
+          <span>{isContextLost ? 'Utracono kontekst WebGL (GPU). Oczekiwanie na przywrócenie...' : mapError}</span>
+        </div>
+      )}
 
       {/* Floating 3D Control Center Hub */}
       <Map3DControlHub

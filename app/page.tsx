@@ -53,6 +53,7 @@ import { cn, triggerHaptic, exportApplicationsToCSV, ensureAbsoluteUrl, getAnnou
 import { ALL_CATEGORY_KEYS, normalizeCategory, type CategoryKey } from '@/lib/data/categories';
 import { searchAnnouncements, tokenize, isSzczecinAnnouncement } from '@/lib/search/engine';
 import { parseNaturalLanguageQuery } from '@/lib/search/naturalLanguageQuery';
+import { deduplicateCrossPortalAds } from '@/lib/deduplication/crossPortalDeduplicator';
 import type { DisplayAnnouncement } from '@/lib/types/display';
 import type { MatchResult } from '@/lib/matching/types';
 
@@ -77,7 +78,6 @@ import { DesktopFilterSidebar } from '@/components/layout/DesktopFilterSidebar';
 import { DynamicIsland } from '@/components/ui/DynamicIsland';
 import { AmbientSolarGlow } from '@/components/theme/AmbientSolarGlow';
 import ConstructionSalaryModal from '@/components/calculator/ConstructionSalaryModal';
-import { KinematicQuickView } from '@/components/list/KinematicQuickView';
 import { MarketPulseBar } from '@/components/list/MarketPulseBar';
 import { CommandPaletteModal } from '@/components/navigation/CommandPaletteModal';
 import { SettingsDashboard } from '@/components/settings/SettingsDashboard';
@@ -90,7 +90,6 @@ import { CvGeneratorModal } from '@/components/cv/CvGeneratorModal';
 import { EmployerPortalModal } from '@/components/employer/EmployerPortalModal';
 import { EmployerReviewModal } from '@/components/reviews/EmployerReviewModal';
 import { QuickFilterBar } from '@/components/ui/QuickFilterBar';
-import { QuickActionHub } from '@/components/ui/QuickActionHub';
 import { AppSettingsModal } from '@/components/settings/AppSettingsModal';
 import { generateApplicationMessageDraft } from '@/lib/contact/draftGenerator';
 import { ProTierModal } from '@/components/billing/ProTierModal';
@@ -176,15 +175,19 @@ function MatchBadge({ score, label }: { score: number; label: string }) {
 }
 
 function AnnouncementCard({
-  ad, index, isFavorite, isSelected, match, status, onToggleFavorite, onShowOnMap, onSetStatus, onQuickView, onOpenAiInterview, onOpenSalaryBenchmark, onOpenTimeline, onOpenCalculator, isCompared = false, onToggleCompare,
+  ad, index, isFavorite, isSelected, isHovered = false, onMouseEnter, onMouseLeave, match, status, onToggleFavorite, onShowOnMap, onSetStatus, onQuickView, onOpenAiInterview, onOpenSalaryBenchmark, onOpenTimeline, onOpenCalculator, isCompared = false, onToggleCompare,
 }: {
   ad: DisplayAnnouncement;
   index: number;
   isFavorite: boolean;
   isSelected: boolean;
+  isHovered?: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   match: MatchResult | null;
   status: ApplicationStatus | null;
   onToggleFavorite: () => void;
+  onShowInList?: () => void;
   onShowOnMap: () => void;
   onSetStatus: (s: ApplicationStatus) => void;
   onQuickView?: () => void;
@@ -283,9 +286,13 @@ function AnnouncementCard({
             'cursor-pointer transition-all duration-300 overflow-hidden wow-glass-card rounded-2xl',
             isSelected 
               ? 'bg-gradient-to-r from-primary/15 via-card to-card border-primary ring-2 ring-primary/20 shadow-xl' 
+              : isHovered
+              ? 'border-emerald-500/70 ring-2 ring-emerald-500/30 shadow-emerald-500/15 shadow-xl -translate-y-0.5'
               : 'hover:border-emerald-500/50 hover:shadow-emerald-500/10 hover:shadow-xl'
           )}
           onClick={() => setExpanded(!expanded)}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
         >
           <CardContent className="p-0">
             <div className="p-4.5">
@@ -975,8 +982,7 @@ export default function HomePage() {
   const [constructionCalcModalAd, setConstructionCalcModalAd] = useState<DisplayAnnouncement | null>(null);
   const [pitchModalAd, setPitchModalAd] = useState<DisplayAnnouncement | null>(null);
 
-  // --- Quick View Drawer & Command Palette State ---
-  const [quickViewAd, setQuickViewAd] = useState<DisplayAnnouncement | null>(null);
+  // --- Command Palette State ---
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // --- AI Interview, Benchmark, CV, Employer, Review & Settings Modals ---
@@ -992,7 +998,12 @@ export default function HomePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredAnnouncementId, setHoveredAnnouncementId] = useState<string | null>(null);
   const [flyToken, setFlyToken] = useState(0);
+  const [mapBounds, setMapBounds] = useState<{ south: number; west: number; north: number; east: number } | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const handleSearchArea = useCallback((bounds: { south: number; west: number; north: number; east: number }) => {
+    setMapBounds(bounds);
+  }, []);
 
   // Merge realtime + scraped data into one normalized shape
   const allAnnouncements = useMemo((): DisplayAnnouncement[] => {
@@ -1036,15 +1047,50 @@ export default function HomePage() {
       traits: a.traits,
     }));
 
-    const seen = new Set<string>();
-    const merged: DisplayAnnouncement[] = [];
-    for (const item of [...fromScraper, ...fromRealtime]) {
-      if (!seen.has(item.id)) {
-        seen.add(item.id);
-        merged.push(item);
-      }
-    }
-    return merged;
+    const combinedScraped = [...fromScraper, ...fromRealtime].map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      source_url: item.source_url,
+      source_portal: (item.source_portal || 'olx').toLowerCase() as any,
+      category: item.category as any,
+      location_text: item.location_text,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      price: item.price != null ? String(item.price) : null,
+      phone: item.phone,
+      scraped_at: item.scraped_at.toISOString(),
+      published_at: item.published_at ? item.published_at.toISOString() : null,
+      company: item.company || null,
+      employment_type: item.employment_type || null,
+    }));
+
+    const deduplicated = deduplicateCrossPortalAds(combinedScraped);
+
+    return deduplicated.map((m) => {
+      const original = [...fromScraper, ...fromRealtime].find((raw) => raw.id === m.id);
+      return {
+        id: m.id,
+        title: m.title,
+        description: m.description,
+        source_url: m.source_url,
+        source_portal: m.source_portal,
+        category: m.category || '',
+        location_text: m.location_text,
+        latitude: m.latitude,
+        longitude: m.longitude,
+        price: m.price,
+        phone: m.phone || null,
+        scraped_at: new Date(m.scraped_at),
+        published_at: m.published_at ? new Date(m.published_at) : null,
+        company: m.company || null,
+        employment_type: m.employment_type || null,
+        posted_days_ago: original?.posted_days_ago ?? null,
+        traits: original?.traits,
+        available_portals: m.available_portals,
+        is_cross_posted: m.is_cross_posted,
+      };
+    });
   }, [announcements, scrapedAds]);
 
   // Precompute match scores once per (ads, preferences) change
@@ -1107,6 +1153,18 @@ export default function HomePage() {
       });
     }
 
+    if (mapBounds) {
+      result = result.filter((a) => {
+        if (a.latitude == null || a.longitude == null) return false;
+        return (
+          a.latitude >= mapBounds.south &&
+          a.latitude <= mapBounds.north &&
+          a.longitude >= mapBounds.west &&
+          a.longitude <= mapBounds.east
+        );
+      });
+    }
+
     const scoreOf = (id: string) => matchMap.get(id)?.score ?? 0;
 
     switch (sortBy) {
@@ -1135,7 +1193,10 @@ export default function HomePage() {
     }
 
     return result;
-  }, [allAnnouncements, searchQuery, filterPortal, showFavoritesOnly, showTrackedOnly, selectedDistrict, minSalary, commuteRadiusKm, sortBy, isFavorite, getStatus, matchMap, prefsActive]);
+  }, [allAnnouncements, searchQuery, filterPortal, showFavoritesOnly, showTrackedOnly, selectedDistrict, minSalary, commuteRadiusKm, mapBounds, sortBy, isFavorite, getStatus, matchMap, prefsActive]);
+
+  // Memoize map announcements to preserve reference equality across non-search re-renders
+  const mapAds = useMemo(() => filteredAds.filter(isSzczecinAnnouncement), [filteredAds]);
 
   const comparedAdsList = useMemo(() => {
     return allAnnouncements.filter((a) => comparedAdIds.has(a.id));
@@ -1225,10 +1286,13 @@ export default function HomePage() {
 
   // --- Cross-navigation handlers ---
 
-  /** Marker clicked on the map: select it, and if we're already on the list, scroll to it */
+  /** Marker clicked on the map: select it, and if in split view, scroll to it */
   const handleMarkerClick = useCallback((id: string) => {
     setSelectedId(id);
-  }, []);
+    if (isSplitView) {
+      cardRefs.current.get(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [isSplitView]);
 
   /** "Zobacz na liście" from a map popup: switch tabs + scroll to the card */
   const handleShowInList = useCallback((id: string) => {
@@ -1242,12 +1306,14 @@ export default function HomePage() {
     });
   }, []);
 
-  /** "Pokaż na mapie" from a list card: switch to map tab + fly to marker */
+  /** "Pokaż na mapie" from a list card: fly to marker (switches tab only when not in split view) */
   const handleShowOnMap = useCallback((id: string) => {
     setSelectedId(id);
     setFlyToken((t) => t + 1);
-    setActiveTab('map');
-  }, []);
+    if (!isSplitView) {
+      setActiveTab('map');
+    }
+  }, [isSplitView]);
 
   function handleTabChange(tab: TabId) {
     setActiveTab(tab);
@@ -1266,13 +1332,19 @@ export default function HomePage() {
       return (
         <FavoritesView
           favoriteAds={favoriteAds}
+          tracked={tracked}
+          onSetStatus={(id, st, note) => {
+            setStatus(id, st, note);
+            showToast('success', `Status: ${STATUS_META[st].label}`);
+          }}
+          onOpenTimeline={(ad) => setTimelineAd(ad)}
           onToggleFavorite={toggleFavorite}
           onShowOnMap={(id) => {
             setActiveTab('map');
             setSelectedId(id);
             setFlyToken((t) => t + 1);
           }}
-          onQuickView={(ad) => setQuickViewAd(ad)}
+          onQuickView={(ad) => setSlideOverAd(ad)}
           onOpenAiInterview={(ad) => setInterviewModalAd(ad)}
           onOpenSalaryBenchmark={(ad) => setBenchmarkModalAd(ad)}
           onOpenCvGenerator={() => setCvGeneratorOpen(true)}
@@ -1291,39 +1363,29 @@ export default function HomePage() {
 
     return (
       <div className="w-full">
-        {/* 🏝️ Floating Dynamic Island with Offline, Scraping and Market status */}
-        <DynamicIsland
-          isListening={isListening}
-          isScraping={scrapeLoading}
-          comparedCount={comparedAdIds.size}
-          totalOffersCount={filteredAds.length}
-          avgSalaryPln={marketOverview.overallAvgSalary || 7850}
-          onOpenCompare={() => setCompareModalOpen(true)}
-          onStopListening={() => setIsListening(false)}
-          onRefresh={() => scrapeNow()}
-        />
-
-        {/* 🗺️ Enterprise WebGL Map Container (Persisted in GPU memory for zero-lag tab switching) */}
-        <div className={cn('w-full h-[calc(100dvh-128px)] md:h-[calc(100dvh-56px)] relative overflow-hidden', isMapActive && !isSplitView ? 'block' : 'hidden')}>
-          <MapViewDynamic
-            ads={filteredAds.filter(isSzczecinAnnouncement)}
-            totalCount={allAnnouncements.length}
-            activeCategories={activeCategories}
-            onCategoryChange={setActiveCategories}
-            isFavorite={isFavorite}
-            onToggleFavorite={toggleFavorite}
-            selectedId={selectedId}
-            flyToken={flyToken}
-            onMarkerClick={handleMarkerClick}
-            onShowInList={handleShowInList}
-            onSearchArea={(_bounds: { south: number; west: number; north: number; east: number }) => {
-              setSearchQuery('');
-            }}
-            homeLat={preferences.homeLat}
-            homeLng={preferences.homeLng}
-            maxDistanceKm={preferences.maxDistanceKm}
-          />
-        </div>
+        {/* 🗺️ Enterprise WebGL Map Container (Persisted when tab-switching, unmounted in split view to avoid duplicate WebGL contexts) */}
+        {!isSplitView && (
+          <div className={cn('w-full h-[calc(100dvh-128px)] md:h-[calc(100dvh-56px)] relative overflow-hidden', isMapActive ? 'block' : 'hidden')}>
+            <MapViewDynamic
+              ads={mapAds}
+              totalCount={allAnnouncements.length}
+              activeCategories={activeCategories}
+              onCategoryChange={setActiveCategories}
+              isFavorite={isFavorite}
+              onToggleFavorite={toggleFavorite}
+              selectedId={selectedId}
+              hoveredId={hoveredAnnouncementId}
+              onMarkerHover={setHoveredAnnouncementId}
+              flyToken={flyToken}
+              onMarkerClick={handleMarkerClick}
+              onShowInList={handleShowInList}
+              onSearchArea={handleSearchArea}
+              homeLat={preferences.homeLat}
+              homeLng={preferences.homeLng}
+              maxDistanceKm={preferences.maxDistanceKm}
+            />
+          </div>
+        )}
 
         {/* 📋 Interactive List & Split View Container */}
         <div className={cn(isListActive || isSplitView ? 'block' : 'hidden')}>
@@ -1346,6 +1408,7 @@ export default function HomePage() {
                     setMinSalary(0);
                     setCommuteRadiusKm(0);
                     setSearchQuery('');
+                    setMapBounds(null);
                   }}
                 />
               </div>
@@ -1484,19 +1547,20 @@ export default function HomePage() {
               <div className="hidden md:flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 pt-1 border-t border-border/40">
                 <RecentSearchChips currentQuery={searchQuery} onSelectQuery={setSearchQuery} />
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    triggerHaptic(12);
-                    setProTierModalOpen(true);
-                  }}
-                  className="h-8 px-2.5 rounded-lg text-xs font-extrabold gap-1.5 shrink-0 text-amber-500 dark:text-amber-400 bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20 cursor-pointer shadow-xs"
-                  title="Pakiety Majster PRO, Wyróżnienia 3D i Płatności BLIK"
-                >
-                  <Crown className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-                  <span>Majster PRO</span>
-                </Button>
+                {mapBounds && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      triggerHaptic(10);
+                      setMapBounds(null);
+                    }}
+                    className="h-8 px-2.5 rounded-lg text-xs font-bold gap-1 shrink-0 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer animate-in fade-in zoom-in-95 duration-200"
+                    title="Wyczyść filtr obszaru mapy"
+                  >
+                    <MapIcon className="w-3 h-3" /> Obszar mapy ({filteredAds.length}) <X className="w-3 h-3 ml-0.5" />
+                  </Button>
+                )}
 
                 <Button
                   variant="outline"
@@ -1805,6 +1869,9 @@ export default function HomePage() {
                       index={i}
                       isFavorite={isFavorite(ad.id)}
                       isSelected={ad.id === selectedId}
+                      isHovered={ad.id === hoveredAnnouncementId}
+                      onMouseEnter={() => setHoveredAnnouncementId(ad.id)}
+                      onMouseLeave={() => setHoveredAnnouncementId(null)}
                       match={prefsActive ? matchMap.get(ad.id) ?? null : null}
                       status={getStatus(ad.id)}
                       onToggleFavorite={() => {
@@ -1853,17 +1920,19 @@ export default function HomePage() {
             {isSplitView && (
               <div className="hidden lg:block lg:w-[45%] xl:w-[48%] h-[calc(100vh-120px)] sticky top-16 rounded-3xl overflow-hidden border border-border/80 shadow-2xl">
                 <MapViewDynamic
-                  ads={filteredAds.filter(isSzczecinAnnouncement)}
+                  ads={mapAds}
                   totalCount={allAnnouncements.length}
                   activeCategories={activeCategories}
                   onCategoryChange={setActiveCategories}
                   isFavorite={isFavorite}
                   onToggleFavorite={toggleFavorite}
                   selectedId={selectedId}
+                  hoveredId={hoveredAnnouncementId}
+                  onMarkerHover={setHoveredAnnouncementId}
                   flyToken={flyToken}
                   onMarkerClick={handleMarkerClick}
                   onShowInList={handleShowInList}
-                  onSearchArea={(_bounds) => setSearchQuery('')}
+                  onSearchArea={handleSearchArea}
                   homeLat={preferences.homeLat}
                   homeLng={preferences.homeLng}
                   maxDistanceKm={preferences.maxDistanceKm}
@@ -1899,7 +1968,7 @@ export default function HomePage() {
         isScraping={scrapeLoading}
         comparedCount={comparedAdIds.size}
         totalOffersCount={filteredAds.length}
-        avgSalaryPln={7850}
+        avgSalaryPln={marketOverview.overallAvgSalary || 7850}
         onOpenCompare={() => setCompareModalOpen(true)}
         onStopListening={() => setIsListening(false)}
         onRefresh={() => scrapeNow(undefined, 40)}
@@ -1967,21 +2036,6 @@ export default function HomePage() {
         }}
       />
 
-      {/* Kinematic Quick-View Announcement Drawer */}
-      <KinematicQuickView
-        ad={quickViewAd}
-        isOpen={quickViewAd !== null}
-        onClose={() => setQuickViewAd(null)}
-        isFavorite={quickViewAd ? isFavorite(quickViewAd.id) : false}
-        onToggleFavorite={() => quickViewAd && toggleFavorite(quickViewAd.id)}
-        onShowOnMap={() => {
-          if (quickViewAd) {
-            handleShowOnMap(quickViewAd.id);
-            setQuickViewAd(null);
-          }
-        }}
-      />
-
       {/* Command Palette Modal (Ctrl+K) */}
       <CommandPaletteModal
         isOpen={commandPaletteOpen}
@@ -1990,7 +2044,7 @@ export default function HomePage() {
         onSelectAd={(id) => {
           handleShowOnMap(id);
           const found = allAnnouncements.find((a) => a.id === id);
-          if (found) setQuickViewAd(found);
+          if (found) setSlideOverAd(found);
         }}
         onSelectTab={(tab) => handleTabChange(tab)}
         onOpenCalculator={() => {
@@ -2042,35 +2096,15 @@ export default function HomePage() {
         onClose={() => setReviewModalCompany(null)}
       />
 
-      {/* Global App Settings Modal */}
-      <AppSettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
-
-      {/* Side-by-Side Job Comparison Modal */}
-      <JobComparisonModal
-        ads={allAnnouncements.filter((a) => comparedAdIds.has(a.id))}
-        isOpen={compareModalOpen}
-        onClose={() => setCompareModalOpen(false)}
-        onRemoveFromComparison={(id) => {
-          setComparedAdIds((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        }}
-      />
-
       {/* Application Timeline & Progress Modal */}
       <ApplicationTimelineModal
         ad={timelineAd}
         trackedApp={timelineAd ? tracked[timelineAd.id] : null}
         isOpen={timelineAd !== null}
         onClose={() => setTimelineAd(null)}
-        onSetStatus={(st) => {
+        onSetStatus={(st, note) => {
           if (timelineAd) {
-            setStatus(timelineAd.id, st);
+            setStatus(timelineAd.id, st, note);
             showToast('success', `Zmieniono status na: ${STATUS_META[st].label}`);
           }
         }}
@@ -2094,17 +2128,6 @@ export default function HomePage() {
         location={pitchModalAd?.location_text || 'Szczecin'}
         sourcePortal={pitchModalAd?.source_portal || 'Bezpośrednie'}
         defaultPrice={typeof pitchModalAd?.price === 'number' ? pitchModalAd.price : null}
-      />
-
-      {/* Floating QOL Quick Action Hub */}
-      <QuickActionHub
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onRefresh={() => {
-          scrapeNow();
-          showToast('info', 'Odświeżanie najnowszych ofert ze Szczecina...');
-        }}
-        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
       />
 
       {/* Guest prompt modal */}
@@ -2136,6 +2159,11 @@ export default function HomePage() {
         onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         onToggleSplitView={() => setIsSplitView(!isSplitView)}
         isSplitView={isSplitView}
+        activeTab={activeTab}
+        onRefresh={() => {
+          scrapeNow();
+          showToast('info', 'Odświeżanie najnowszych ofert ze Szczecina...');
+        }}
       />
 
 
@@ -2148,6 +2176,9 @@ export default function HomePage() {
         onShowOnMap={() => {
           if (slideOverAd) handleShowOnMap(slideOverAd.id);
         }}
+        onOpenTimeline={() => {
+          if (slideOverAd) setTimelineAd(slideOverAd);
+        }}
       />
 
       {/* 📑 Desktop & Tablet: Slide-Over Inspector Drawer */}
@@ -2158,6 +2189,9 @@ export default function HomePage() {
           onClose={() => setSlideOverAd(null)}
           onShowOnMap={() => {
             if (slideOverAd) handleShowOnMap(slideOverAd.id);
+          }}
+          onOpenTimeline={() => {
+            if (slideOverAd) setTimelineAd(slideOverAd);
           }}
         />
       </div>

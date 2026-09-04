@@ -38,7 +38,7 @@ describe('3D Sunlight & Dynamic Shading Engine', () => {
 
       const golden = getSunlightPreset('golden_hour');
       expect(golden.id).toBe('golden_hour');
-      expect(golden.lightColor).toBe('#fbbf24');
+      expect(golden.lightColor).toBe('#f59e0b');
 
       const night = getSunlightPreset('night_cyberpunk');
       expect(night.id).toBe('night_cyberpunk');
@@ -66,8 +66,8 @@ describe('3D Sunlight & Dynamic Shading Engine', () => {
       applySunlightToMap(mockMap, 'golden_hour');
       expect(setLightMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          anchor: 'viewport',
-          color: '#fbbf24',
+          anchor: 'map',
+          color: '#f59e0b',
         })
       );
       expect(setPaintPropertyMock).toHaveBeenCalledWith('3d-buildings', 'fill-extrusion-color', expect.any(Array));

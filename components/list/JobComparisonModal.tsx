@@ -24,7 +24,7 @@ export function JobComparisonModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
         <div className="absolute inset-0" onClick={onClose} />
 
         <motion.div

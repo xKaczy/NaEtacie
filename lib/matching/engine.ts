@@ -19,13 +19,27 @@ import type { JobPreferences, MatchResult, MatchReason } from './types';
 
 /** Haversine distance between two lat/lng points, in kilometers. */
 export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  if (
+    lat1 == null || lng1 == null || lat2 == null || lng2 == null ||
+    typeof lat1 !== 'number' || typeof lng1 !== 'number' ||
+    typeof lat2 !== 'number' || typeof lng2 !== 'number' ||
+    isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2) ||
+    !isFinite(lat1) || !isFinite(lng1) || !isFinite(lat2) || !isFinite(lng2)
+  ) {
+    return 0;
+  }
+
   const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const clampedLat1 = Math.max(-90, Math.min(90, lat1));
+  const clampedLat2 = Math.max(-90, Math.min(90, lat2));
+
+  const dLat = ((clampedLat2 - clampedLat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    Math.cos((clampedLat1 * Math.PI) / 180) * Math.cos((clampedLat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  const safeA = Math.max(0, Math.min(1, a));
+  return R * 2 * Math.atan2(Math.sqrt(safeA), Math.sqrt(Math.max(0, 1 - safeA)));
 }
 
 /**
@@ -34,6 +48,7 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
  */
 export function szczecinRoadDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const straightLine = haversineKm(lat1, lng1, lat2, lng2);
+  if (!isFinite(straightLine) || straightLine <= 0) return 0;
   const crossesOdra = (lng1 < 14.57 && lng2 > 14.59) || (lng1 > 14.59 && lng2 < 14.57);
   const roadFactor = crossesOdra ? 1.45 : 1.25;
   return Math.round(straightLine * roadFactor * 10) / 10;

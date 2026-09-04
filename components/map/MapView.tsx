@@ -2741,6 +2741,47 @@ export default function MapView({
         >
           <span className="text-base">📡</span>
         </button>
+
+        {/* 🎯 GPS Moja Pozycja na Budowie */}
+        <button
+          type="button"
+          onClick={() => {
+            triggerHaptic(15);
+            if (typeof navigator !== 'undefined' && navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  const { latitude, longitude } = pos.coords;
+                  const map = mapRef.current;
+                  if (map) {
+                    map.flyTo({
+                      center: [longitude, latitude],
+                      zoom: 15,
+                      duration: prefersReducedMotion ? 0 : 1500,
+                    });
+                    new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 15 })
+                      .setLngLat([longitude, latitude])
+                      .setHTML(
+                        '<div style="padding: 8px 12px; font-weight: bold; font-size: 12px; text-align: center; color: #f59e0b;">🏗️ Twoja pozycja GPS na budowie</div>'
+                      )
+                      .addTo(map);
+                  }
+                },
+                () => {
+                  const map = mapRef.current;
+                  if (map) {
+                    map.flyTo({ center: SZCZECIN, zoom: 14 });
+                  }
+                },
+                { enableHighAccuracy: true, timeout: 8000 }
+              );
+            }
+          }}
+          className="w-11 h-11 rounded-xl flex items-center justify-center hover:bg-zinc-800 active:scale-90 text-amber-400 hover:text-amber-300 transition-all cursor-pointer touch-manipulation border border-amber-500/20 bg-amber-500/10 shadow-sm"
+          title="Centruj na Twojej aktualnej pozycji (GPS na budowie)"
+          aria-label="Moja pozycja GPS na budowie"
+        >
+          <span className="text-base" role="img" aria-label="Celownik GPS">🎯</span>
+        </button>
       </div>
 
       {/* 🎯 Centered Action Stack: Search in Area & Active Spatial Region Pill */}

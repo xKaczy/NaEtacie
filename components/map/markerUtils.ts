@@ -107,7 +107,8 @@ export function getMarkerHtml(
   // Sonar Wave for fresh offers (<6h), urgent offers, selected, or hovered
   const sonarRing =
     isSelected || isHovered || isFresh || isUrgent
-      ? `<div class="sonar-wave-pulse" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${
+      ? `
+        <div class="sonar-wave-pulse" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${
           isMobile ? '38px' : '48px'
         };height:${
           isMobile ? '38px' : '48px'
@@ -119,7 +120,13 @@ export function getMarkerHtml(
             : isSelected
             ? 'rgba(56,189,248,0.3)'
             : 'rgba(16,185,129,0.25)'
-        };border:1.5px solid ${heatColor};animation:sonar-wave 2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;pointer-events:none;"></div>`
+        };border:1.5px solid ${heatColor};animation:sonar-wave 2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;pointer-events:none;"></div>
+        <div class="sonar-wave-pulse-echo" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${
+          isMobile ? '38px' : '48px'
+        };height:${
+          isMobile ? '38px' : '48px'
+        };border-radius:50%;border:1px solid ${heatColor};animation:sonar-wave-echo 2s cubic-bezier(0.1, 0.8, 0.3, 1) 0.65s infinite;pointer-events:none;"></div>
+      `
       : '';
 
   // Top micro tag (CITO / TOP / NOWE)

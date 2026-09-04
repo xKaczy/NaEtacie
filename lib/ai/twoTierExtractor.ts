@@ -60,6 +60,7 @@ export interface EnrichedJobData {
   certifications: string[];
   benefits: string[];
   requirements: ExtractedRequirement[];
+  tradeTags?: string[];
   isFraudSuspicious: boolean;
   tierUsed: 'tier1_fast_regex' | 'tier2_structured_llm';
   confidenceScore: number; // 0.0 to 1.0
@@ -69,10 +70,11 @@ export interface LlmExtractorFn {
   (prompt: string): Promise<{
     salaryMin?: number;
     salaryMax?: number;
-    salaryUnit?: 'hourly' | 'monthly' | 'project';
+    salaryUnit?: 'hourly' | 'daily' | 'piecework' | 'monthly' | 'project';
     employmentType?: string;
     certifications?: string[];
     benefits?: string[];
+    tradeTags?: string[];
     phone?: string;
   } | null>;
 }
@@ -129,6 +131,7 @@ export async function extractEnrichedJobData(
       certifications: fastTraits.certifications,
       benefits: fastTraits.benefits,
       requirements: fastBadges,
+      tradeTags: fastTraits.trade_tags,
       isFraudSuspicious: fastTraits.fraud_analysis.isSuspicious,
       tierUsed: 'tier1_fast_regex',
       confidenceScore: confidence,
@@ -161,6 +164,7 @@ export async function extractEnrichedJobData(
         certifications: Array.from(new Set([...fastTraits.certifications, ...(llmResult.certifications || [])])),
         benefits: Array.from(new Set([...fastTraits.benefits, ...(llmResult.benefits || [])])),
         requirements: fastBadges,
+        tradeTags: Array.from(new Set([...(fastTraits.trade_tags || []), ...(llmResult.tradeTags || [])])),
         isFraudSuspicious: fastTraits.fraud_analysis.isSuspicious,
         tierUsed: 'tier2_structured_llm',
         confidenceScore: 0.95,
@@ -180,6 +184,7 @@ export async function extractEnrichedJobData(
     certifications: fastTraits.certifications,
     benefits: fastTraits.benefits,
     requirements: fastBadges,
+    tradeTags: fastTraits.trade_tags,
     isFraudSuspicious: fastTraits.fraud_analysis.isSuspicious,
     tierUsed: 'tier1_fast_regex',
     confidenceScore: confidence,

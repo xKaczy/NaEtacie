@@ -230,7 +230,7 @@ export async function runMultiPortalScrape(
   const {
     query,
     limit = 60,
-    portals = ['olx', 'pracuj', 'indeed', 'jooble', 'gowork', 'oferteo', 'fixly'],
+    portals = ['olx', 'pracuj', 'indeed', 'jooble', 'gowork', 'oferteo', 'fixly', 'bip_szczecin'],
     timeoutPerPortalMs = 8000,
   } = options;
 

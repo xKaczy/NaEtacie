@@ -27,6 +27,8 @@ describe('Zero-Cost Local AI/NLP Job Extractor', () => {
       max: 45,
       currency: 'PLN',
       unit: 'hourly',
+      estimated_monthly_min: 7560,
+      estimated_monthly_max: 7560,
     });
   });
 
@@ -38,5 +40,39 @@ describe('Zero-Cost Local AI/NLP Job Extractor', () => {
 
     expect(traits.experience_level).toBe('Brak doświadczenia');
     expect(traits.employment_type_normalized).toBe('B2B');
+  });
+
+  it('extracts trade tags and daily salary rates properly', () => {
+    const title = 'Tynkarz maszynowy - agregat PFT G4, tynki gipsowe';
+    const description = 'Zatrudnimy tynkarza maszynowego. Dniówka 400 - 450 zł za dzień, wypłata co tydzień.';
+
+    const traits = extractJobTraits(title, description);
+
+    expect(traits.trade_tags).toContain('Tynki maszynowe');
+    expect(traits.salary_parsed).toEqual({
+      min: 400,
+      max: 450,
+      currency: 'PLN',
+      unit: 'daily',
+      estimated_monthly_min: 8400,
+      estimated_monthly_max: 9450,
+    });
+  });
+
+  it('extracts piecework and modern eco-trades (pompy ciepła, fotowoltaika, szpachlowanie bezpyłowe)', () => {
+    const title = 'Monter pomp ciepła i instalacji PV - szpachlowanie bezpyłowe';
+    const description = 'Poszukujemy ekipy: montaż pomp ciepła HVAC, panele fotowoltaiczne, akord 60 zł/m2.';
+
+    const traits = extractJobTraits(title, description);
+
+    expect(traits.trade_tags).toContain('Pompy ciepła i HVAC');
+    expect(traits.trade_tags).toContain('Fotowoltaika (PV)');
+    expect(traits.trade_tags).toContain('Szpachlowanie bezpyłowe');
+    expect(traits.salary_parsed).toEqual({
+      min: 60,
+      max: 60,
+      currency: 'PLN',
+      unit: 'piecework',
+    });
   });
 });

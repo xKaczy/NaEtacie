@@ -5,6 +5,7 @@ export interface ExtractedJobTraits {
   experience_level: 'Brak doświadczenia' | '1–3 lata' | 'Powyżej 3 lat';
   certifications: string[];
   benefits: string[];
+  trade_tags?: string[];
   equipment_detected: DetectedEquipment[];
   fraud_analysis: FraudAnalysisResult;
   employment_type_normalized: string;
@@ -12,7 +13,9 @@ export interface ExtractedJobTraits {
     min: number | null;
     max: number | null;
     currency: string;
-    unit: 'hourly' | 'monthly' | 'project';
+    unit: 'hourly' | 'daily' | 'piecework' | 'monthly' | 'project';
+    estimated_monthly_min?: number;
+    estimated_monthly_max?: number;
   } | null;
   accommodation_provided: boolean;
   transport_provided: boolean;
@@ -41,6 +44,21 @@ const BENEFIT_PATTERNS: { name: string; rx: RegExp }[] = [
   { name: 'Pakiety socjalne', rx: /multisport|opieka medyczna|posiłki|dieta|ubezpieczenie/i },
 ];
 
+export const TRADE_PATTERNS: { name: string; rx: RegExp }[] = [
+  { name: 'Tynki maszynowe', rx: /tynki\s+maszynow|tynkarz\s+maszynow|agregat\s+tynkarsk|pft\s+g4/i },
+  { name: 'Szpachlowanie bezpyłowe', rx: /szpachlowanie\s+bezpyłow|gładzie\s+bezpyłow|szlifowanie\s+bezpyłow|żyrafa|festool\s+planex/i },
+  { name: 'Pompy ciepła i HVAC', rx: /pomp[ay]\s+ciepła|hvac|klimatyzacj[ae]|wentylacj[ae]|rekuperacj/i },
+  { name: 'Fotowoltaika (PV)', rx: /fotowoltaik|instalacje\s+pv|panele\s+fotowoltaiczne|monter\s+pv/i },
+  { name: 'Instalacje wod-kan i CO', rx: /wod-?kan|instalacje\s+sanitarne|hydraulik|montaż\s+kotł|ogrzewanie\s+podłogowe/i },
+  { name: 'Montaż stolarki i fasad', rx: /stolark[ia]|montaż\s+okien|montaż\s+drzwi|fasady\s+wentylowane|aladynki/i },
+  { name: 'Gładzie i malowanie', rx: /malowanie\s+natryskowe|gładzie|malarz|tapetowanie/i },
+  { name: 'Płytki i glazura', rx: /glazurnik|płytkarz|układanie\s+płytek|gres|wielki\s+format/i },
+  { name: 'Brukarstwo i roboty ziemne', rx: /brukarz|układanie\s+kostki|roboty\s+ziemne|wykopy/i },
+  { name: 'Cieśla i dekarz', rx: /dekarz|obróbki\s+blacharskie|krycie\s+dachu|więźba|cieśla/i },
+  { name: 'Zbrojarz i betoniarz', rx: /zbrojarz|betoniarz|szalunki|szalowanie|doka|peri/i },
+  { name: 'Sucha zabudowa (G-K)', rx: /regips|karton-?gips|sucha\s+zabudowa|ścianki\s+g-?k|sufity\s+podwieszane/i },
+];
+
 /**
  * Extracts structured traits from a job posting title and description.
  */
@@ -60,6 +78,14 @@ export function extractJobTraits(title: string, description: string, price?: str
   for (const ben of BENEFIT_PATTERNS) {
     if (ben.rx.test(fullText)) {
       benefits.push(ben.name);
+    }
+  }
+
+  // 3. Trade specializations
+  const tradeTags: string[] = [];
+  for (const trade of TRADE_PATTERNS) {
+    if (trade.rx.test(fullText)) {
+      tradeTags.push(trade.name);
     }
   }
 
@@ -116,25 +142,47 @@ export function extractJobTraits(title: string, description: string, price?: str
   if (hourlyMatch) {
     const min = parseInt(hourlyMatch[1], 10);
     const max = hourlyMatch[2] ? parseInt(hourlyMatch[2], 10) : min;
-    salaryParsed = { min, max, currency: 'PLN', unit: 'hourly' };
+    salaryParsed = {
+      min,
+      max,
+      currency: 'PLN',
+      unit: 'hourly',
+      estimated_monthly_min: Math.round(min * 168),
+      estimated_monthly_max: Math.round(max * 168),
+    };
   } else if (dailyMatch) {
     const min = parseInt(dailyMatch[1], 10);
     const max = dailyMatch[2] ? parseInt(dailyMatch[2], 10) : min;
-    salaryParsed = { min: Math.round(min * 21), max: Math.round(max * 21), currency: 'PLN', unit: 'monthly' };
+    salaryParsed = {
+      min,
+      max,
+      currency: 'PLN',
+      unit: 'daily',
+      estimated_monthly_min: Math.round(min * 21),
+      estimated_monthly_max: Math.round(max * 21),
+    };
   } else if (pieceworkMatch) {
     const min = parseInt(pieceworkMatch[1], 10);
     const max = pieceworkMatch[2] ? parseInt(pieceworkMatch[2], 10) : min;
-    salaryParsed = { min, max, currency: 'PLN', unit: 'project' };
+    salaryParsed = { min, max, currency: 'PLN', unit: 'piecework' };
   } else if (monthlyMatch) {
     const min = parseInt(monthlyMatch[1], 10);
     const max = monthlyMatch[2] ? parseInt(monthlyMatch[2], 10) : min;
-    salaryParsed = { min, max, currency: 'PLN', unit: 'monthly' };
+    salaryParsed = {
+      min,
+      max,
+      currency: 'PLN',
+      unit: 'monthly',
+      estimated_monthly_min: min,
+      estimated_monthly_max: max,
+    };
   }
 
   return {
     experience_level: expLevel,
     certifications: certs,
     benefits,
+    trade_tags: tradeTags,
     equipment_detected,
     fraud_analysis,
     employment_type_normalized: empType,

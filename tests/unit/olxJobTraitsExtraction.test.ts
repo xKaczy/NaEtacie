@@ -44,41 +44,47 @@ describe('OLX Data & Job Traits Extraction Suite', () => {
     it('parses hourly salary ranges correctly', () => {
       const traits = extractJobTraits('Spawacz TIG', 'Stawka 35 – 45 zł / h w zależności od umiejętności.');
 
-      expect(traits.salary_parsed).toEqual({
+      expect(traits.salary_parsed).toMatchObject({
         min: 35,
         max: 45,
         currency: 'PLN',
         unit: 'hourly',
+        estimated_monthly_min: 5880,
+        estimated_monthly_max: 7560,
       });
     });
 
     it('parses daily rates and converts them to monthly estimated equivalents', () => {
       const traits = extractJobTraits('Cieśla szalunkowy', 'Płatność 300 zł / dzień.');
 
-      expect(traits.salary_parsed?.unit).toBe('monthly');
-      expect(traits.salary_parsed?.min).toBe(6300); // 300 * 21 days
-      expect(traits.salary_parsed?.max).toBe(6300);
+      expect(traits.salary_parsed?.unit).toBe('daily');
+      expect(traits.salary_parsed?.min).toBe(300);
+      expect(traits.salary_parsed?.max).toBe(300);
+      expect(traits.salary_parsed?.estimated_monthly_min).toBe(6300); // 300 * 21 days
+      expect(traits.salary_parsed?.estimated_monthly_max).toBe(6300);
     });
 
     it('parses piecework rate per m2', () => {
       const traits = extractJobTraits('Glazurnik / Tynkarz', 'Kładzenie płytki 80 – 120 zł / m2.');
 
-      expect(traits.salary_parsed).toEqual({
+      expect(traits.salary_parsed).toMatchObject({
         min: 80,
         max: 120,
         currency: 'PLN',
-        unit: 'project',
+        unit: 'piecework',
       });
     });
 
     it('parses monthly salary ranges', () => {
       const traits = extractJobTraits('Kierownik Budowy', 'Wynagrodzenie 8000 – 12000 PLN brutto.');
 
-      expect(traits.salary_parsed).toEqual({
+      expect(traits.salary_parsed).toMatchObject({
         min: 8000,
         max: 12000,
         currency: 'PLN',
         unit: 'monthly',
+        estimated_monthly_min: 8000,
+        estimated_monthly_max: 12000,
       });
     });
 

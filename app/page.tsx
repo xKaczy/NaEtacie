@@ -103,6 +103,8 @@ import { TradeBidEstimatorModal } from '@/components/announcements/TradeBidEstim
 import { PitchGeneratorModal } from '@/components/contact/PitchGeneratorModal';
 import { SitePhotoLogModal } from '@/components/announcements/SitePhotoLogModal';
 import { VoiceTaskRecorderModal } from '@/components/voice/VoiceTaskRecorderModal';
+import { TrafficImpedimentsModal } from '@/components/map/TrafficImpedimentsModal';
+import { evaluateJobTrafficImpact } from '@/lib/geo/szczecinTrafficImpediments';
 import { AdaptiveMobileTopBar } from '@/components/navigation/AdaptiveMobileTopBar';
 import { DesktopCommandCenter } from '@/components/layout/DesktopCommandCenter';
 
@@ -247,10 +249,12 @@ function AnnouncementCard({
   const netBreakdown = typeof ad.price === 'number' ? calculateNetSalary(ad.price) : null;
   const urgency = useMemo(() => detectJobUrgency(ad.title, ad.description), [ad.title, ad.description]);
   const trust = useMemo(() => evaluateEmployerTrust(ad), [ad]);
+  const trafficImpact = useMemo(() => evaluateJobTrafficImpact(ad.latitude, ad.longitude), [ad.latitude, ad.longitude]);
   const [tradeBidModalOpen, setTradeBidModalOpen] = useState(false);
   const [pitchModalOpen, setPitchModalOpen] = useState(false);
   const [sitePhotoLogOpen, setSitePhotoLogOpen] = useState(false);
   const [voiceRecorderOpen, setVoiceRecorderOpen] = useState(false);
+  const [trafficModalOpen, setTrafficModalOpen] = useState(false);
 
   const handleSwipeEnd = (_: unknown, info: PanInfo) => {
     triggerHaptic(12);
@@ -655,6 +659,32 @@ function AnnouncementCard({
                     <span>Zweryfikowana oferta — 100% bezpieczna i zgodna ze standardami rynkowymi</span>
                   </div>
 
+                  {/* Roadworks & Van Logistics Alert */}
+                  {trafficImpact.hasNearbyRoadworks && trafficImpact.nearestImpediment && (
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTrafficModalOpen(true);
+                      }}
+                      className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2 cursor-pointer hover:bg-amber-500/15 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-base">🚧</span>
+                        <div className="text-xs">
+                          <span className="font-bold text-amber-800 dark:text-amber-300 block">
+                            Utrudnienia drogowe w rejonie budowy ({trafficImpact.distanceKm} km)
+                          </span>
+                          <span className="text-[11px] text-amber-700/80 dark:text-amber-400/80 line-clamp-1">
+                            {trafficImpact.nearestImpediment.streetName} (+{trafficImpact.nearestImpediment.delayMinutes} min). Kliknij, aby sprawdzić objazd dla busa.
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase px-2 py-1 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-md shrink-0">
+                        Objazd ➔
+                      </span>
+                    </div>
+                  )}
+
                   {/* QOL Quick Share & Copy & Timeline Action Row */}
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     <Button
@@ -950,6 +980,13 @@ function AnnouncementCard({
         onClose={() => setVoiceRecorderOpen(false)}
         adId={ad.id}
         title={ad.title}
+      />
+
+      {/* Utrudnienia Drogowe & Objazdy dla Busa Modal */}
+      <TrafficImpedimentsModal
+        isOpen={trafficModalOpen}
+        onClose={() => setTrafficModalOpen(false)}
+        highlightedImpedimentId={trafficImpact.nearestImpediment?.id}
       />
     </motion.div>
   );

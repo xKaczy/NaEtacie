@@ -1,10 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Zap, MapPin, Briefcase, Sparkles, SlidersHorizontal, Sun, Flame, Building2, Globe } from 'lucide-react';
+import { Zap, MapPin, Briefcase, Sparkles, SlidersHorizontal, Sun, Flame, Building2, Globe, AlertTriangle } from 'lucide-react';
 import { cn, triggerHaptic } from '@/lib/utils';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { TrafficImpedimentsModal } from '@/components/map/TrafficImpedimentsModal';
 
 export interface QuickFilter {
   id: string;
@@ -40,8 +41,10 @@ export function QuickFilterBar({
   totalOffersCount = 750,
 }: QuickFilterBarProps) {
   const { outdoorMode, setOutdoorMode } = useTheme();
+  const [trafficModalOpen, setTrafficModalOpen] = useState(false);
 
   return (
+    <>
     <div className="w-full bg-card/60 backdrop-blur-xl border-b border-border/40 px-3 sm:px-4 py-2.5 space-y-2 transition-all duration-300">
       {/* Header ribbon: Verified Offers Count + Outdoor Sun Mode */}
       <div className="flex items-center justify-between gap-2">
@@ -55,25 +58,42 @@ export function QuickFilterBar({
           </span>
         </div>
 
-        {/* Outdoor Sun Mode Toggle */}
-        <motion.button
-          onClick={() => {
-            triggerHaptic(12);
-            setOutdoorMode(!outdoorMode);
-          }}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.96 }}
-          className={cn(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shadow-xs touch-manipulation cursor-pointer border',
-            outdoorMode
-              ? 'bg-amber-400 text-neutral-950 border-amber-500 shadow-amber-500/30 font-black'
-              : 'bg-accent/70 hover:bg-accent text-muted-foreground hover:text-foreground border-border/60'
-          )}
-          title="Tryb Na Budowę (Maksymalny kontrast w pełnym słońcu)"
-        >
-          <Sun className={cn('w-3.5 h-3.5', outdoorMode ? 'text-neutral-950' : 'text-amber-500')} />
-          <span className="hidden sm:inline">Tryb Budowa</span>
-        </motion.button>
+        <div className="flex items-center gap-1.5">
+          {/* Traffic Impediments & Roadworks Modal Button */}
+          <motion.button
+            onClick={() => {
+              triggerHaptic(10);
+              setTrafficModalOpen(true);
+            }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.96 }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shadow-xs touch-manipulation cursor-pointer border bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30"
+            title="Sprawdź utrudnienia drogowe, remonty i objazdy dla busów w Szczecinie"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline">Utrudnienia & Bus</span>
+          </motion.button>
+
+          {/* Outdoor Sun Mode Toggle */}
+          <motion.button
+            onClick={() => {
+              triggerHaptic(12);
+              setOutdoorMode(!outdoorMode);
+            }}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.96 }}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all shadow-xs touch-manipulation cursor-pointer border',
+              outdoorMode
+                ? 'bg-amber-400 text-neutral-950 border-amber-500 shadow-amber-500/30 font-black'
+                : 'bg-accent/70 hover:bg-accent text-muted-foreground hover:text-foreground border-border/60'
+            )}
+            title="Tryb Na Budowę (Maksymalny kontrast w pełnym słońcu)"
+          >
+            <Sun className={cn('w-3.5 h-3.5', outdoorMode ? 'text-neutral-950' : 'text-amber-500')} />
+            <span className="hidden sm:inline">Tryb Budowa</span>
+          </motion.button>
+        </div>
       </div>
 
       {/* 1-Tap Quick Filter Chips */}
@@ -109,5 +129,11 @@ export function QuickFilterBar({
         })}
       </div>
     </div>
+
+    <TrafficImpedimentsModal
+      isOpen={trafficModalOpen}
+      onClose={() => setTrafficModalOpen(false)}
+    />
+    </>
   );
 }

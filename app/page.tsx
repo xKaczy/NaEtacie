@@ -105,6 +105,7 @@ import { SitePhotoLogModal } from '@/components/announcements/SitePhotoLogModal'
 import { VoiceTaskRecorderModal } from '@/components/voice/VoiceTaskRecorderModal';
 import { TrafficImpedimentsModal } from '@/components/map/TrafficImpedimentsModal';
 import { evaluateJobTrafficImpact } from '@/lib/geo/szczecinTrafficImpediments';
+import { getQuickSmsHref, getQuickWhatsAppHref } from '@/lib/geo/transitRouting';
 import { AdaptiveMobileTopBar } from '@/components/navigation/AdaptiveMobileTopBar';
 import { DesktopCommandCenter } from '@/components/layout/DesktopCommandCenter';
 
@@ -388,6 +389,30 @@ function AnnouncementCard({
                           >
                             <Phone className="w-4 h-4 fill-current" />
                           </a>
+                          {(() => {
+                            const waHref = getQuickWhatsAppHref({
+                              phone: ad.phone,
+                              title: ad.title,
+                              district: ad.location_text,
+                            });
+                            if (!waHref) return null;
+                            return (
+                              <a
+                                href={waHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  triggerHaptic(15);
+                                }}
+                                className="shrink-0 p-1.5 rounded-full text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 hover:scale-110 transition-transform cursor-pointer"
+                                title={`Napisz na WhatsApp: ${ad.phone}`}
+                                aria-label="Napisz na WhatsApp do majstra"
+                              >
+                                <span className="text-xs font-black leading-none">WA</span>
+                              </a>
+                            );
+                          })()}
                           <a
                             href={`sms:${ad.phone.replace(/\s+/g, '')}?body=${encodeURIComponent(
                               `Dzień dobry! Piszę w sprawie ogłoszenia: "${ad.title.slice(0, 45)}" z serwisu NaEtacie. Jestem zainteresowany i dyspozycyjny od zaraz. Proszę o kontakt.`

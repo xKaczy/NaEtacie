@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { User, Bell, Sliders, Settings, Sparkles } from 'lucide-react';
+import { User, Bell, Sliders } from 'lucide-react';
 import { ProfileSettings } from '@/components/profile/ProfileSettings';
 import { NotificationsView } from '@/components/notifications/NotificationsView';
 import { AppSettingsContent } from './AppSettingsContent';

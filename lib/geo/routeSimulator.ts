@@ -24,7 +24,7 @@ export interface SimulatedRouteGeoJSON {
 }
 
 // Major Szczecin Arterial Bridge / Traffic Corridors [lng, lat]
-const SZCZECIN_CORRIDORS: Record<string, Array<[number, number]>> = {
+export const SZCZECIN_CORRIDORS: Record<string, Array<[number, number]>> = {
   trasa_zamkowa: [
     [14.5580, 53.4270], // Wały Chrobrego
     [14.5680, 53.4245], // Most Trasa Zamkowa

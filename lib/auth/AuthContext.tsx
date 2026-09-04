@@ -22,10 +22,8 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
   signOut as firebaseSignOut,
   sendEmailVerification,
-  GoogleAuthProvider,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';

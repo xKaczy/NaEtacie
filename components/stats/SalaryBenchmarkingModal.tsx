@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, TrendingUp, Sparkles, X, CheckCircle2 } from 'lucide-react';
+import { BarChart3, Sparkles, X } from 'lucide-react';
 import type { DisplayAnnouncement } from '@/lib/types/display';
 import { Button } from '@/components/ui/button';
 

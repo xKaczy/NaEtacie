@@ -445,6 +445,40 @@ function AnnouncementCard({
                         </button>
                       )}
                       <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          triggerHaptic(12);
+                          playUiSound('pop');
+                          const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/#ad-${ad.id}` : 'https://naetacie.pl';
+                          const salaryStr = ad.price ? ` (${typeof ad.price === 'number' ? `${ad.price} zł` : ad.price})` : '';
+                          const shareData = {
+                            title: `Praca Szczecin: ${ad.title}`,
+                            text: `Sprawdź zlecenie: ${ad.title}${salaryStr} w Szczecinie`,
+                            url: shareUrl,
+                          };
+                          if (typeof navigator !== 'undefined' && navigator.share) {
+                            try {
+                              await navigator.share(shareData);
+                            } catch {
+                              // User dismissed native share sheet
+                            }
+                          } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                            try {
+                              await navigator.clipboard.writeText(`${shareData.text} — ${shareData.url}`);
+                              showToast('info', 'Skopiowano link do ogłoszenia do schowka!');
+                            } catch {
+                              // clipboard denied
+                            }
+                          }
+                        }}
+                        className="shrink-0 p-1.5 rounded-full text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-all duration-200"
+                        title="Udostępnij ofertę koledze z ekipy"
+                        aria-label="Udostępnij ogłoszenie"
+                      >
+                        <Share2 className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           playUiChime('like');

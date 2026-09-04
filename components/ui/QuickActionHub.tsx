@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp, Map, List, Sparkles, Command, RefreshCw } from 'lucide-react';
+import { ArrowUp, Map, List, Command, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { TabId } from '@/components/navigation/AppShell';
 

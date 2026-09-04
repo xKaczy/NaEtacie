@@ -4,11 +4,8 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
-  Mic,
   RefreshCw,
   Scale,
-  TrendingUp,
-  MapPin,
   X,
   WifiOff,
 } from 'lucide-react';
@@ -39,7 +36,7 @@ export function DynamicIsland({
   avgSalaryPln = 7850,
   onOpenCompare,
   onStopListening,
-  onRefresh,
+  onRefresh: _onRefresh,
 }: DynamicIslandProps) {
   const [isOffline, setIsOffline] = React.useState(false);
 

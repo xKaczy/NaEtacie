@@ -36,7 +36,6 @@ export function SpotlightCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: -1000, y: -1000 });
   const [tilt, setTilt] = useState<{ rotateX: number; rotateY: number }>({ rotateX: 0, rotateY: 0 });
-  const [isHovered, setIsHovered] = useState(false);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!cardRef.current || prefersReducedMotion) return;
@@ -54,10 +53,7 @@ export function SpotlightCard({
     }
   }, [enableTilt, prefersReducedMotion]);
 
-  const handleMouseEnter = () => setIsHovered(true);
-
   const handleMouseLeave = () => {
-    setIsHovered(false);
     setCoords({ x: -1000, y: -1000 });
     setTilt({ rotateX: 0, rotateY: 0 });
   };
@@ -66,7 +62,6 @@ export function SpotlightCard({
     <motion.div
       ref={cardRef}
       onMouseMove={handleMouseMove}
-      onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={onClick}
       animate={

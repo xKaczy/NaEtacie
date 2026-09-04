@@ -130,7 +130,6 @@ export function inferTradeAndScope(title: string, description: string): { tradeK
 
   // Scope detection (m2, mb, punkty, etc.)
   let quantity = 0;
-  let unit = 'm²';
 
   const m2Match = combined.match(/(\d+(?:[.,]\d+)?)\s*(?:m2|m²|metr[oó]w\s*kwadratowych)/i);
   const pktMatch = combined.match(/(\d+)\s*(?:punkt[oó]w|pkt|gniazd|włącznik[oó]w)/i);
@@ -138,13 +137,10 @@ export function inferTradeAndScope(title: string, description: string): { tradeK
 
   if (m2Match) {
     quantity = parseFloat(m2Match[1].replace(',', '.'));
-    unit = 'm²';
   } else if (pktMatch) {
     quantity = parseInt(pktMatch[1], 10);
-    unit = 'pkt';
   } else if (bathMatch) {
     quantity = parseInt(bathMatch[1], 10);
-    unit = 'kpl';
   }
 
   // Trade detection

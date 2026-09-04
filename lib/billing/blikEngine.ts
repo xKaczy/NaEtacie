@@ -213,7 +213,7 @@ export async function simulateBankAuthorization(
   transaction: BlikTransaction,
   mockDelayMs = 2000
 ): Promise<BlikTransaction> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     // If BLIK code ends in '00' in test mode, simulate bank rejection
     if (transaction.blikCode.endsWith('00')) {
       setTimeout(() => {

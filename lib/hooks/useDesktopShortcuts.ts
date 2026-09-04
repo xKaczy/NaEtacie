@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { triggerHaptic } from '@/lib/utils';
-import { playUiSound } from '@/lib/motion/soundEngine';
 
 export interface DesktopShortcutsHandlers {
   onNextOffer?: () => void;

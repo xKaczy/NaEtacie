@@ -102,6 +102,7 @@ import { VoiceSummaryButton } from '@/components/voice/VoiceSummaryButton';
 import { TradeBidEstimatorModal } from '@/components/announcements/TradeBidEstimatorModal';
 import { PitchGeneratorModal } from '@/components/contact/PitchGeneratorModal';
 import { SitePhotoLogModal } from '@/components/announcements/SitePhotoLogModal';
+import { VoiceTaskRecorderModal } from '@/components/voice/VoiceTaskRecorderModal';
 import { AdaptiveMobileTopBar } from '@/components/navigation/AdaptiveMobileTopBar';
 import { DesktopCommandCenter } from '@/components/layout/DesktopCommandCenter';
 
@@ -249,6 +250,7 @@ function AnnouncementCard({
   const [tradeBidModalOpen, setTradeBidModalOpen] = useState(false);
   const [pitchModalOpen, setPitchModalOpen] = useState(false);
   const [sitePhotoLogOpen, setSitePhotoLogOpen] = useState(false);
+  const [voiceRecorderOpen, setVoiceRecorderOpen] = useState(false);
 
   const handleSwipeEnd = (_: unknown, info: PanInfo) => {
     triggerHaptic(12);
@@ -857,6 +859,20 @@ function AnnouncementCard({
                         📸 Foto-Dziennik
                       </Button>
 
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerHaptic(10);
+                          setVoiceRecorderOpen(true);
+                        }}
+                        className="gap-1 text-xs font-bold text-violet-600 dark:text-violet-400 border-violet-500/30 bg-violet-500/5 hover:bg-violet-500/10 cursor-pointer"
+                        title="Głosowe notatki, metraż i rozliczenia majstra (Hands-free)"
+                      >
+                        🎙️ Głosowe Ustalenia
+                      </Button>
+
                       {hasLocation && (
                         <a
                           href={`https://www.google.com/maps/dir/?api=1&destination=${ad.latitude},${ad.longitude}&travelmode=transit`}
@@ -926,6 +942,14 @@ function AnnouncementCard({
         title={ad.title}
         locationText={ad.location_text}
         companyName={ad.company}
+      />
+
+      {/* Głosowe Notatki & Rozliczenia Majstra Modal */}
+      <VoiceTaskRecorderModal
+        isOpen={voiceRecorderOpen}
+        onClose={() => setVoiceRecorderOpen(false)}
+        adId={ad.id}
+        title={ad.title}
       />
     </motion.div>
   );

@@ -229,7 +229,9 @@ export default function MapView({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showDistrictAnalytics, setShowDistrictAnalytics] = useState(false);
-  const [sheetSnapState, setSheetSnapState] = useState<'collapsed' | 'medium' | 'expanded'>('medium');
+  const [sheetSnapState, setSheetSnapState] = useState<'collapsed' | 'medium' | 'expanded'>(() =>
+    selectedId ? 'medium' : 'collapsed'
+  );
   const [moved, setMoved] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [tilesLoading, setTilesLoading] = useState(true);
@@ -542,6 +544,18 @@ export default function MapView({
         setMoved(true);
         updateUrlParams();
         if (map) setCurrentZoom(map.getZoom());
+      });
+      map.on('movestart', () => {
+        // When user actively pans or moves the map, collapse the mobile sheet so the map isn't obscured
+        setSheetSnapState('collapsed');
+      });
+      map.on('click', (e) => {
+        // If clicking blank area on the map, collapse mobile preview sheet and clear detailed modal
+        const target = e.originalEvent?.target as HTMLElement | null;
+        if (target && (target.closest('.maplibregl-marker') || target.closest('.maplibre-popup-content'))) {
+          return;
+        }
+        setSheetSnapState('collapsed');
       });
 
       // ─── ERROR HANDLING & FALLBACK ─────────────────────────────────
@@ -2519,6 +2533,7 @@ export default function MapView({
               });
             }
           }}
+          snapState={sheetSnapState}
           onSnapStateChange={setSheetSnapState}
           ui={ui}
           isDark={isDark}

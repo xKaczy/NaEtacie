@@ -54,8 +54,8 @@ export const VoiceTaskRecorderModal: React.FC<VoiceTaskRecorderModalProps> = ({
   }, [isOpen, adId]);
 
   const startRecording = () => {
-    const win = typeof window !== 'undefined' ? (window as unknown as IWindowWithSpeech) : {};
-    const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
+    const win = (typeof window !== 'undefined' ? window : null) as (IWindowWithSpeech | null);
+    const SpeechRecognition = win ? (win.SpeechRecognition || win.webkitSpeechRecognition) : null;
 
     if (!SpeechRecognition) {
       alert('Twoja przeglądarka nie wspiera dyktowania głosem Web Speech API. Użyj Chrome lub Safari na telefonie.');

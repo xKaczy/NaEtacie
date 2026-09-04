@@ -4,9 +4,9 @@ import type { SheetSnapState } from '@/components/map/MobileBottomSheet';
 
 describe('MobileBottomSheet Component Logic Unit Tests', () => {
   const SNAP_HEIGHTS: Record<SheetSnapState, string> = {
-    collapsed: '30px',
-    medium: '16vh',
-    expanded: '32vh',
+    collapsed: '56px',
+    medium: '44vh',
+    expanded: '78vh',
   };
 
   const mockAds: DisplayAnnouncement[] = [
@@ -44,10 +44,22 @@ describe('MobileBottomSheet Component Logic Unit Tests', () => {
     },
   ];
 
-  it('verifies 1/3 reduced snap heights for mobile viewport', () => {
-    expect(SNAP_HEIGHTS.collapsed).toBe('30px');
-    expect(SNAP_HEIGHTS.medium).toBe('16vh');
-    expect(SNAP_HEIGHTS.expanded).toBe('32vh');
+  it('verifies snap heights for mobile viewport ensuring map is not obstructed', () => {
+    expect(SNAP_HEIGHTS.collapsed).toBe('56px');
+    expect(SNAP_HEIGHTS.medium).toBe('44vh');
+    expect(SNAP_HEIGHTS.expanded).toBe('78vh');
+  });
+
+  it('defaults to collapsed state when no ad is selected to keep map visible', () => {
+    const selectedId = null;
+    const initialSnap: SheetSnapState = selectedId ? 'medium' : 'collapsed';
+    expect(initialSnap).toBe('collapsed');
+  });
+
+  it('switches to medium preview when an ad is explicitly tapped', () => {
+    const selectedId = 'ad-bot-1';
+    const initialSnap: SheetSnapState = selectedId ? 'medium' : 'collapsed';
+    expect(initialSnap).toBe('medium');
   });
 
   it('selects active ad or falls back to first offer', () => {

@@ -1047,7 +1047,15 @@ export default function HomePage() {
   const { show: showToast } = useToast();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeTab, setActiveTab] = useState<TabId>('list');
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab === 'map' || urlTab === 'list' || urlTab === 'favorites' || urlTab === 'stats' || urlTab === 'portal') {
+        return urlTab as TabId;
+      }
+    }
+    return 'list';
+  });
   const [isSplitView, setIsSplitView] = useState(false);
   const [slideOverAd, setSlideOverAd] = useState<DisplayAnnouncement | null>(null);
   const [viewDensity, setViewDensity] = useState<'cards' | 'table'>('cards');
@@ -1417,6 +1425,20 @@ export default function HomePage() {
     }
   }, [allAnnouncements, isOnline, saveToCache]);
 
+  // Sync activeTab from URL on initial load and browser back/forward navigation
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const readUrlTab = () => {
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab === 'map' || urlTab === 'list' || urlTab === 'favorites' || urlTab === 'settings') {
+        setActiveTab(urlTab as TabId);
+      }
+    };
+    readUrlTab();
+    window.addEventListener('popstate', readUrlTab);
+    return () => window.removeEventListener('popstate', readUrlTab);
+  }, []);
+
   // Auto-scrape on first load
   useEffect(() => {
     if (allAnnouncements.length === 0 && !scrapeLoading) {
@@ -1458,6 +1480,11 @@ export default function HomePage() {
 
   function handleTabChange(tab: TabId) {
     setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      params.set('tab', tab);
+      window.history.replaceState(null, '', `?${params.toString()}`);
+    }
   }
 
   // Power-user keyboard shortcuts

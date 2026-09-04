@@ -10,6 +10,7 @@ import {
   Sparkles,
   Building2,
   ChevronDown,
+  Minimize2,
   CheckCircle2,
   GripHorizontal,
   MessageSquare,
@@ -39,6 +40,7 @@ export interface MobileBottomSheetProps {
   isFavorite: (id: string) => boolean;
   onToggleFavorite: (id: string) => void;
   onShowOnMap: (id: string) => void;
+  snapState?: SheetSnapState;
   onSnapStateChange?: (state: SheetSnapState) => void;
   ui: {
     surface: string;
@@ -52,7 +54,7 @@ export interface MobileBottomSheetProps {
 export type SheetSnapState = 'collapsed' | 'medium' | 'expanded';
 
 const SNAP_HEIGHTS: Record<SheetSnapState, string> = {
-  collapsed: '62px',
+  collapsed: '56px',
   medium: '44vh',
   expanded: '78vh',
 };
@@ -65,15 +67,19 @@ export function MobileBottomSheet({
   isFavorite,
   onToggleFavorite,
   onShowOnMap,
+  snapState: controlledSnapState,
   onSnapStateChange,
 }: MobileBottomSheetProps) {
-  const [snapState, setSnapState] = useState<SheetSnapState>('medium');
+  const [internalSnapState, setInternalSnapState] = useState<SheetSnapState>(() =>
+    selectedId ? 'medium' : 'collapsed'
+  );
+  const snapState = controlledSnapState !== undefined ? controlledSnapState : internalSnapState;
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     if (selectedId) {
       triggerHaptic(12);
-      setSnapState((prev) => (prev === 'collapsed' ? 'medium' : prev));
+      updateSnapState('medium');
       if (snapState === 'expanded') {
         const cardEl = cardRefs.current.get(selectedId);
         if (cardEl) {
@@ -84,7 +90,7 @@ export function MobileBottomSheet({
   }, [selectedId]);
 
   const updateSnapState = (newState: SheetSnapState) => {
-    setSnapState(newState);
+    setInternalSnapState(newState);
     onSnapStateChange?.(newState);
   };
 
@@ -173,13 +179,31 @@ export function MobileBottomSheet({
               {ads.length} ofert
             </span>
           </span>
-          <div className="flex items-center gap-1 text-emerald-400 font-extrabold text-xs">
-            <span>{snapState === 'collapsed' ? 'Rozwiń' : snapState === 'expanded' ? 'Zwiń' : 'Pełna lista'}</span>
-            {snapState === 'expanded' ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronUp className="w-4 h-4" />
+          <div className="flex items-center gap-1.5 text-emerald-400 font-extrabold text-xs">
+            {snapState !== 'collapsed' && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  triggerHaptic(12);
+                  updateSnapState('collapsed');
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800/90 text-slate-300 hover:text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all cursor-pointer border border-white/10"
+                title="Minimalizuj panel, aby odsłonić pełną mapę"
+                aria-label="Minimalizuj panel"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Schowaj</span>
+              </button>
             )}
+            <span className="flex items-center gap-1 cursor-pointer">
+              <span>{snapState === 'collapsed' ? 'Rozwiń' : snapState === 'expanded' ? 'Zwiń' : 'Pełna lista'}</span>
+              {snapState === 'expanded' ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronUp className="w-4 h-4" />
+              )}
+            </span>
           </div>
         </div>
       </div>

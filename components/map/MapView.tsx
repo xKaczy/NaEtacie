@@ -27,7 +27,7 @@ import { SearchAreaButton } from './SearchAreaButton';
 import { MapWeatherWidget } from './MapWeatherWidget';
 import { calculateCommuteEstimate } from './MapCommuteRoute';
 import { getDistrictSalaryGeoJson } from './MapDistrictSalaryHeatmap';
-import { triggerHaptic, formatShortPrice, ensureAbsoluteUrl, getAnnouncementExternalUrl } from '@/lib/utils';
+import { triggerHaptic, formatShortPrice, ensureAbsoluteUrl, getAnnouncementExternalUrl, getDevicePerformanceTier, isMobileDevice } from '@/lib/utils';
 import { isPointInPolygon, generateSpiderfyPositions, createGeoJsonCircle, isValidCoordinate, sanitizeFeatureCollection, matchesSalaryFilter, type MapSalaryFilter } from './utils';
 import { MapConstructionSites } from './MapConstructionSites';
 import { MapTransitStops } from './MapTransitStops';
@@ -625,6 +625,11 @@ export default function MapView({
 
         if (sourceId) {
           try {
+            const isMobile = isMobileDevice();
+            const perfTier = getDevicePerformanceTier();
+            // On low-tier mobile devices, raise minzoom to 15.0 or simplify extrusion to preserve battery & 60 FPS
+            const minBuildingZoom = perfTier === 'low' ? 15.0 : isMobile ? 14.2 : 13.5;
+
             if (!map.getLayer('3d-buildings')) {
               map.addLayer(
                 {
@@ -632,21 +637,21 @@ export default function MapView({
                   source: sourceId,
                   'source-layer': 'building',
                   type: 'fill-extrusion',
-                  minzoom: 13.5,
+                  minzoom: minBuildingZoom,
                   paint: {
                     'fill-extrusion-color': dark ? '#1e293b' : '#cbd5e1',
                     'fill-extrusion-height': [
                       'interpolate', ['linear'], ['zoom'],
-                      13.5, 0,
-                      15, ['get', 'render_height']
+                      minBuildingZoom, 0,
+                      minBuildingZoom + 1.5, ['get', 'render_height']
                     ],
                     'fill-extrusion-base': [
                       'interpolate', ['linear'], ['zoom'],
-                      13.5, 0,
-                      15, ['get', 'render_min_height']
+                      minBuildingZoom, 0,
+                      minBuildingZoom + 1.5, ['get', 'render_min_height']
                     ],
-                    'fill-extrusion-opacity': 0.85,
-                    'fill-extrusion-vertical-gradient': true
+                    'fill-extrusion-opacity': perfTier === 'low' ? 0.7 : 0.85,
+                    'fill-extrusion-vertical-gradient': perfTier !== 'low'
                   }
                 },
                 labelLayerId

@@ -238,4 +238,32 @@ export function getAnnouncementExternalUrl(ad?: {
   return 'https://www.olx.pl/praca/budowa-remonty/szczecin/';
 }
 
+/**
+ * Detects whether the current client is a mobile touch device.
+ */
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return (
+    'ontouchstart' in window ||
+    navigator.maxTouchPoints > 0 ||
+    /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  );
+}
 
+/**
+ * Determines device performance profile for 3D Map rendering.
+ * Returns 'low' on constrained mobile hardware and 'high' on modern desktops.
+ */
+export function getDevicePerformanceTier(): 'low' | 'high' {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'high';
+  const nav = navigator as Navigator & { deviceMemory?: number; hardwareConcurrency?: number };
+  const memory = nav.deviceMemory || 4;
+  const cores = nav.hardwareConcurrency || 4;
+
+  if (isMobileDevice()) {
+    if (memory <= 4 || cores <= 4) {
+      return 'low';
+    }
+  }
+  return 'high';
+}

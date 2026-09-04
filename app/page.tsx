@@ -257,11 +257,16 @@ function AnnouncementCard({
   const [trafficModalOpen, setTrafficModalOpen] = useState(false);
 
   const handleSwipeEnd = (_: unknown, info: PanInfo) => {
-    triggerHaptic(12);
-    if (info.offset.x > 80) {
+    triggerHaptic(15);
+    if (info.offset.x > 75) {
       onToggleFavorite();
-    } else if (info.offset.x < -80) {
-      onSetStatus(status === 'applied' ? 'interview' : 'applied');
+      playUiSound('sparkle');
+      showToast('success', !isFavorite ? 'Dodano do ulubionych (gest swipe)' : 'Usunięto z ulubionych');
+    } else if (info.offset.x < -75) {
+      const nextStatus = status === 'applied' ? 'interview' : 'applied';
+      onSetStatus(nextStatus);
+      playUiSound('success');
+      showToast('info', `Status oferty zmieniony na: ${STATUS_META[nextStatus].label}`);
     }
   };
 

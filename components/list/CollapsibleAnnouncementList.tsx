@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   List,
@@ -12,6 +12,7 @@ import {
   MapPin,
   TrendingUp,
   Wrench,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn, triggerHaptic } from '@/lib/utils';
@@ -78,9 +79,16 @@ export default function CollapsibleAnnouncementList<
   title = 'Zwijana Lista Ofert',
   defaultCollapsed = false,
   className,
+  onRefresh,
   enableGrouping = true,
 }: CollapsibleAnnouncementListProps<T>) {
   const prefersReducedMotion = useReducedMotion();
+
+  // Pull-to-refresh mobile gesture state
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const touchStartY = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // LocalStorage state persistence
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -98,6 +106,54 @@ export default function CollapsibleAnnouncementList<
     }
     return 'flat';
   });
+
+  // Touch handlers for mobile pull-to-refresh
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!onRefresh || isRefreshing || isCollapsed) return;
+    if (window.scrollY <= 5) {
+      touchStartY.current = e.touches[0].clientY;
+    } else {
+      touchStartY.current = null;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartY.current || !onRefresh || isRefreshing || isCollapsed) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - touchStartY.current;
+    if (diff > 0 && window.scrollY <= 5) {
+      // Damped pull distance max 80px
+      const damped = Math.min(80, Math.pow(diff, 0.85));
+      setPullDistance(damped);
+      if (damped >= 60 && pullDistance < 60) {
+        triggerHaptic(10);
+      }
+    } else {
+      setPullDistance(0);
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (!touchStartY.current || !onRefresh || isRefreshing) {
+      setPullDistance(0);
+      touchStartY.current = null;
+      return;
+    }
+
+    if (pullDistance >= 50) {
+      setIsRefreshing(true);
+      triggerHaptic(20);
+      try {
+        await onRefresh();
+      } finally {
+        setIsRefreshing(false);
+        setPullDistance(0);
+      }
+    } else {
+      setPullDistance(0);
+    }
+    touchStartY.current = null;
+  };
 
   // Track collapsed state for individual group sections
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -172,7 +228,39 @@ export default function CollapsibleAnnouncementList<
   }, [items, groupBy]);
 
   return (
-    <div className={cn('w-full space-y-2 select-none', className)}>
+    <div
+      ref={containerRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className={cn('w-full space-y-2 select-none relative', className)}
+    >
+      {/* Mobile Pull-to-Refresh Visual Feedback */}
+      {(pullDistance > 0 || isRefreshing) && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{
+            opacity: 1,
+            height: isRefreshing ? 48 : Math.min(pullDistance, 54),
+          }}
+          className="flex items-center justify-center gap-2 overflow-hidden mx-4 rounded-xl bg-primary/10 border border-primary/25 text-primary text-xs font-bold"
+        >
+          <RefreshCw
+            className={cn('w-4 h-4', isRefreshing ? 'animate-spin' : '')}
+            style={{
+              transform: isRefreshing ? undefined : `rotate(${pullDistance * 4}deg)`,
+            }}
+          />
+          <span>
+            {isRefreshing
+              ? 'Odświeżanie najnowszych ofert...'
+              : pullDistance >= 50
+              ? 'Puść, aby odświeżyć'
+              : 'Pociągnij w dół, aby pobrać nowe'}
+          </span>
+        </motion.div>
+      )}
+
       {/* Prominent Collapsible List Accordion Toggle Bar */}
       <div
         id="collapsible-announcement-header"

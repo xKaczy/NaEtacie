@@ -70,4 +70,16 @@ describe('CollapsibleAnnouncementList trade tags grouping & filtering', () => {
     expect(groups['Płytki i glazura']).toHaveLength(1);
     expect(groups['Inne / Ogólnobudowlane']).toHaveLength(1);
   });
+
+  it('calculates damped pull distance for mobile pull-to-refresh correctly', () => {
+    const calculatePullDamping = (diff: number) => Math.min(80, Math.pow(diff, 0.85));
+
+    expect(calculatePullDamping(0)).toBe(0);
+    // 50px pull gives ~27.8px damped
+    expect(calculatePullDamping(50)).toBeGreaterThan(20);
+    // 120px pull triggers threshold > 50px
+    expect(calculatePullDamping(120)).toBeGreaterThanOrEqual(50);
+    // Cap at 80px maximum
+    expect(calculatePullDamping(300)).toBe(80);
+  });
 });

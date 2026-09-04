@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Service Worker 2.0 for NaEtacie PWA with Advanced Offline GIS & Vector Tile Caching.
  * Provides offline caching for application shell, static assets, announcements,
  * and vector tiles/styles (CartoDB, MapLibre GL, ArcGIS Satellite) for Szczecin.
@@ -104,3 +104,67 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// 4. Mobile Push Notifications Integration (Nowe zlecenia budowlane Szczecin)
+self.addEventListener('push', (event) => {
+  let data = {
+    title: 'NaEtacie: Nowe zlecenia w Szczecinie',
+    body: 'Pojawiły się nowe oferty pracy budowlanej w Twojej okolicy!',
+    icon: '/icons/icon-192.png',
+    badge: '/favicon.ico',
+    url: '/?tab=map',
+  };
+
+  if (event.data) {
+    try {
+      data = { ...data, ...event.data.json() };
+    } catch {
+      data.body = event.data.text();
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: data.icon || '/icons/icon-192.png',
+    badge: data.badge || '/favicon.ico',
+    vibrate: [100, 50, 100],
+    data: {
+      url: data.url || '/',
+      dateOfArrival: Date.now(),
+    },
+    actions: [
+      { action: 'open_map', title: 'Otwórz na mapie 3D' },
+      { action: 'open_list', title: 'Zobacz listę' },
+    ],
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  let targetUrl = event.notification.data?.url || '/';
+
+  if (event.action === 'open_map') {
+    targetUrl = '/?tab=map';
+  } else if (event.action === 'open_list') {
+    targetUrl = '/?tab=list';
+  }
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Focus existing window if open
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // Open new window
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+

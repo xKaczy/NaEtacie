@@ -3,6 +3,8 @@
  * Senior Geospatial Graphics Architecture for NaEtacie 3D & Baltic Slate.
  */
 
+import { applySzczecinWaterFx } from './szczecinWaterFx';
+
 export type SunlightMode = 'day' | 'golden_hour' | 'sunset' | 'night_cyberpunk' | 'morning' | 'auto';
 
 export interface SunlightPreset {
@@ -159,10 +161,8 @@ export function applySunlightToMap(map: any, mode: SunlightMode): void {
       });
     }
 
-    // 3. Dynamic Baltic Slate Water synchronization
-    if (typeof map.getLayer === 'function' && map.getLayer('water')) {
-      map.setPaintProperty('water', 'fill-color', preset.waterColor);
-    }
+    // 3. Dynamic Baltic Slate Water & Odra Refraction synchronization
+    applySzczecinWaterFx(map, preset.waterColor, mode === 'night_cyberpunk' || mode === 'sunset');
 
     // 4. Adjust 3D building fill-extrusion colors and vertical lighting gradients
     const buildingLayers = ['3d-buildings', '3d-buildings-baltic'];

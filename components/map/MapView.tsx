@@ -39,7 +39,7 @@ import { MapSuppliersModal } from './MapSuppliersModal';
 import { MapHomeRadarModal } from './MapHomeRadarModal';
 import { SZCZECIN_LANDMARKS_3D, getSzczecinLandmarks3DPolygonsGeoJson, type SzczecinLandmark3D } from '@/lib/geo/szczecinLandmarks3D';
 import { LandmarkDetailModal } from './LandmarkDetailModal';
-import { applySunlightToMap, type SunlightMode } from '@/lib/geo/sunlightEngine';
+import { applySunlightToMap, getSunlightPreset, type SunlightMode } from '@/lib/geo/sunlightEngine';
 import { MarkerPopup } from './MarkerPopup';
 import { getMarkerHtml } from './markerUtils';
 import { CategoryFilter } from './CategoryFilterBar';
@@ -2742,6 +2742,28 @@ export default function MapView({
               onClick={() => setIsRadarActive(false)}
               className="ml-1 text-zinc-400 hover:text-zinc-200 text-xs cursor-pointer"
               title="Wyłącz radar zasięgu"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* ☀️ Glass HUD: Dynamic 3D Sunlight Mode */}
+        {sunlightMode !== 'day' && (
+          <div className="pointer-events-auto flex items-center gap-2.5 px-4 py-1.5 rounded-2xl bg-zinc-950/90 backdrop-blur-xl text-zinc-100 text-xs font-bold shadow-2xl border border-amber-500/30 animate-in fade-in slide-in-from-top-2">
+            <span className="flex items-center gap-1.5 text-amber-400">
+              <span>{getSunlightPreset(sunlightMode).icon}</span>
+              <span>{getSunlightPreset(sunlightMode).name}</span>
+            </span>
+            <span className="text-zinc-500">|</span>
+            <span className="text-zinc-400 font-mono text-[11px]">
+              Cienie 3D & Refrakcja Odry
+            </span>
+            <button
+              type="button"
+              onClick={() => setSunlightMode('day')}
+              className="ml-1 text-zinc-400 hover:text-zinc-200 text-xs cursor-pointer"
+              title="Przywróć standardowe światło dzienne"
             >
               ✕
             </button>

@@ -51,6 +51,17 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // 0. Safety Bypass: Never intercept Firebase/Firestore, WebSocket, or Next dev hot reload
+  if (
+    url.hostname.includes('firestore.googleapis.com') ||
+    url.hostname.includes('firebaseio.com') ||
+    url.hostname.includes('identitytoolkit.googleapis.com') ||
+    url.pathname.startsWith('/_next/webpack-hmr') ||
+    url.pathname.startsWith('/_next/static/development')
+  ) {
+    return;
+  }
+
   // 1. Vector Map Tiles & GIS Styles Caching (Stale-While-Revalidate / Cache-First)
   const isGisRequest = GIS_HOSTS.some((host) => url.hostname.includes(host));
   if (isGisRequest) {

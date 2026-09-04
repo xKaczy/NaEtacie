@@ -945,7 +945,7 @@ export default function HomePage() {
   }, []);
 
   const { announcements, isLive } = useRealtimeAnnouncements(50);
-  const { isOnline, saveToCache } = useOfflineSync();
+  const { isOnline, isOfflineMode, cachedAt, saveToCache } = useOfflineSync();
   const { ads: scrapedAds, loading: scrapeLoading, lastScrapedAt, scrapeNow } = useScraper();
   const { isFavorite, toggleFavorite, favoriteCount } = useFavorites();
   const { preferences, update: updatePreferences, reset: resetPreferences } = useJobPreferences();
@@ -1470,6 +1470,32 @@ export default function HomePage() {
 
             <div className={cn('space-y-2', isSplitView ? 'w-full lg:flex-1' : 'w-full')}>
 
+            {/* 📴 Offline Site Banner for Construction workers with weak LTE */}
+            {isOfflineMode && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mx-1 p-3 rounded-2xl bg-amber-500/15 border border-amber-500/35 flex items-center justify-between gap-3 text-xs shadow-md"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-500 shrink-0">
+                    <WifiOff className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-extrabold text-amber-900 dark:text-amber-200 block truncate">
+                      Tryb Pracy Offline (Budowa)
+                    </span>
+                    <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 block truncate">
+                      Brak sieci — przeglądasz oferty z pamięci podręcznej PWA {cachedAt ? `(zapisane: ${formatTimeAgo(cachedAt)})` : ''}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/40 shrink-0">
+                  Lokalnie
+                </span>
+              </motion.div>
+            )}
+
             {/* 🍱 Dynamic Market Bento Grid Overview */}
             <MarketBentoGrid
               ads={listAds}
@@ -1854,9 +1880,14 @@ export default function HomePage() {
                 <span>
                   Znaleziono <strong className="text-foreground">{listAds.length}</strong> {listAds.length === 1 ? 'ofertę' : 'ofert'}
                   {isSearching && <span className="ml-1 text-primary font-bold">· fraza: &quot;{searchQuery}&quot;</span>}
-                  {isLive && <span className="ml-1 text-emerald-500 font-bold">● Na żywo</span>}
+                  {isLive && isOnline && <span className="ml-1 text-emerald-500 font-bold">● Na żywo</span>}
+                  {isOfflineMode && <span className="ml-1 text-amber-500 font-bold">📴 Pamięć PWA</span>}
                 </span>
-                {lastScrapedAt && <span>Odświeżono: {formatTimeAgo(lastScrapedAt)}</span>}
+                {lastScrapedAt && isOnline ? (
+                  <span>Odświeżono: {formatTimeAgo(lastScrapedAt)}</span>
+                ) : cachedAt ? (
+                  <span>Zapis z: {formatTimeAgo(cachedAt)}</span>
+                ) : null}
               </div>
             </div>
 

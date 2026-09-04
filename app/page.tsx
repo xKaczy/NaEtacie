@@ -101,6 +101,7 @@ import { evaluateEmployerTrust } from '@/lib/safety/employerTrustEvaluator';
 import { VoiceSummaryButton } from '@/components/voice/VoiceSummaryButton';
 import { TradeBidEstimatorModal } from '@/components/announcements/TradeBidEstimatorModal';
 import { PitchGeneratorModal } from '@/components/contact/PitchGeneratorModal';
+import { SitePhotoLogModal } from '@/components/announcements/SitePhotoLogModal';
 import { AdaptiveMobileTopBar } from '@/components/navigation/AdaptiveMobileTopBar';
 import { DesktopCommandCenter } from '@/components/layout/DesktopCommandCenter';
 
@@ -247,6 +248,7 @@ function AnnouncementCard({
   const trust = useMemo(() => evaluateEmployerTrust(ad), [ad]);
   const [tradeBidModalOpen, setTradeBidModalOpen] = useState(false);
   const [pitchModalOpen, setPitchModalOpen] = useState(false);
+  const [sitePhotoLogOpen, setSitePhotoLogOpen] = useState(false);
 
   const handleSwipeEnd = (_: unknown, info: PanInfo) => {
     triggerHaptic(12);
@@ -841,6 +843,20 @@ function AnnouncementCard({
                         📊 Stawki Szczecin
                       </Button>
 
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerHaptic(10);
+                          setSitePhotoLogOpen(true);
+                        }}
+                        className="gap-1 text-xs font-bold text-sky-600 dark:text-sky-400 border-sky-500/30 bg-sky-500/5 hover:bg-sky-500/10 cursor-pointer"
+                        title="Foto-Dziennik Budowy & Raport Ustereki (Przed / W trakcie / Po)"
+                      >
+                        📸 Foto-Dziennik
+                      </Button>
+
                       {hasLocation && (
                         <a
                           href={`https://www.google.com/maps/dir/?api=1&destination=${ad.latitude},${ad.longitude}&travelmode=transit`}
@@ -900,6 +916,16 @@ function AnnouncementCard({
         location={ad.location_text}
         sourcePortal={ad.source_portal}
         defaultPrice={typeof ad.price === 'number' ? ad.price : null}
+      />
+
+      {/* Foto-Dziennik Budowy & Dokumentacja Fotograficzna Modal */}
+      <SitePhotoLogModal
+        isOpen={sitePhotoLogOpen}
+        onClose={() => setSitePhotoLogOpen(false)}
+        adId={ad.id}
+        title={ad.title}
+        locationText={ad.location_text}
+        companyName={ad.company}
       />
     </motion.div>
   );

@@ -44,6 +44,7 @@ import { MarkerPopup } from './MarkerPopup';
 import { getMarkerHtml } from './markerUtils';
 import { CategoryFilter } from './CategoryFilterBar';
 import { MapStats } from './MapStats';
+import { SZCZECIN_OSIEDLA, type SzczecinMicroDistrict } from '@/lib/geo/szczecinMicroDistricts';
 
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════════
@@ -2309,6 +2310,47 @@ export default function MapView({
                   </span>
                   <span className={`w-2 h-2 rounded-full ${isDroneOrbiting ? 'bg-rose-400 animate-pulse' : 'bg-zinc-600'}`} />
                 </button>
+              </div>
+            </div>
+
+            {/* Section 3: Szybki Skok do Dzielnicy (Kinowa Kamera 2.5D) */}
+            <div className="space-y-1">
+              <div className="text-[9px] font-bold uppercase text-zinc-400 px-1 tracking-wider">
+                Dzielnice Szczecina (Kamera 2.5D)
+              </div>
+              <div className="grid grid-cols-2 gap-1 max-h-[140px] overflow-y-auto custom-scrollbar pr-0.5">
+                {[
+                  { name: 'Centrum', lat: 53.4285, lng: 14.5528, pitch: 58, bearing: -20 },
+                  { name: 'Łasztownia', lat: 53.4241, lng: 14.5612, pitch: 62, bearing: 140 },
+                  { name: 'Prawobrzeże', lat: 53.382, lng: 14.665, pitch: 52, bearing: 35 },
+                  { name: 'Warszewo', lat: 53.468, lng: 14.542, pitch: 54, bearing: -15 },
+                  { name: 'Pogodno', lat: 53.442, lng: 14.515, pitch: 50, bearing: -30 },
+                  { name: 'Gumieńce', lat: 53.409, lng: 14.502, pitch: 50, bearing: 20 },
+                  { name: 'Dąbie', lat: 53.398, lng: 14.672, pitch: 56, bearing: 45 },
+                  { name: 'Pomorzany', lat: 53.402, lng: 14.532, pitch: 52, bearing: -10 },
+                ].map((d) => (
+                  <button
+                    key={d.name}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerHaptic(10);
+                      mapRef.current?.flyTo({
+                        center: [d.lng, d.lat],
+                        zoom: 14.8,
+                        pitch: d.pitch,
+                        bearing: d.bearing,
+                        duration: prefersReducedMotion ? 0 : 1300,
+                        essential: true,
+                      });
+                      setIsMapMenuOpen(false);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-left text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all cursor-pointer text-[11px] font-semibold truncate"
+                  >
+                    <span className="text-xs shrink-0">📍</span>
+                    <span className="truncate">{d.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>

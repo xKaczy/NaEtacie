@@ -29,6 +29,7 @@ import { EmployerTrustBadge } from '@/components/safety/EmployerTrustBadge';
 import { evaluateEmployerTrust } from '@/lib/safety/employerTrustEvaluator';
 import { getQuickSmsHref, getZditmTransitUrl } from '@/lib/geo/transitRouting';
 import { findNearestSupplier } from '@/lib/geo/szczecinSuppliers';
+import { parseJobSalary } from './utils';
 
 export interface MobileBottomSheetProps {
   ads: DisplayAnnouncement[];
@@ -237,11 +238,21 @@ export function MobileBottomSheet({
               </div>
 
               <div className="text-right shrink-0">
-                <span className="inline-block text-sm sm:text-base font-black font-mono text-emerald-300 bg-emerald-950/80 px-3 py-1.5 rounded-xl border border-emerald-500/40 shadow-sm">
-                  {typeof currentDisplayAd.price === 'number'
-                    ? `${currentDisplayAd.price.toLocaleString('pl-PL')} zł`
-                    : currentDisplayAd.price || 'Stawka do uzg.'}
-                </span>
+                {(() => {
+                  const rate = parseJobSalary(currentDisplayAd.price, currentDisplayAd.title, currentDisplayAd.description);
+                  return (
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="inline-block text-sm sm:text-base font-black font-mono text-emerald-300 bg-emerald-950/80 px-3 py-1.5 rounded-xl border border-emerald-500/40 shadow-sm">
+                        {rate.displayPill}
+                      </span>
+                      {rate.isAboveSzczecinMedian && (
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-tight">
+                          🔥 Top Stawka
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -402,9 +413,7 @@ export function MobileBottomSheet({
                       )}
                     </div>
                     <span className="text-xs font-black font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
-                      {typeof ad.price === 'number'
-                        ? `${ad.price.toLocaleString('pl-PL')} zł`
-                        : ad.price || 'Do uzg.'}
+                      {parseJobSalary(ad.price, ad.title, ad.description).displayPill}
                     </span>
                   </div>
 

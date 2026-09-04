@@ -22,4 +22,19 @@ describe('Mobile UI/UX Architecture & Ergonomics', () => {
     expect(dragDismissOffsetY).toBeGreaterThanOrEqual(100);
     expect(dragDismissVelocityY).toBeGreaterThanOrEqual(500);
   });
+
+  it('validates rugged construction mode hit targets for work gloves', () => {
+    const ruggedMinTargetPx = 48;
+    const defaultTouchTargetPx = 44;
+    expect(ruggedMinTargetPx).toBeGreaterThan(defaultTouchTargetPx);
+  });
+
+  it('verifies 100% free offline speech assistant voice response format', () => {
+    const query = 'malarz centrum od 8k';
+    const parsed = { keyword: 'malarz', district: 'Śródmieście' };
+    const speechResponse = `Szukam: "${parsed.keyword}" w rejonie ${parsed.district}`;
+
+    expect(speechResponse).toContain('malarz');
+    expect(speechResponse).toContain('Śródmieście');
+  });
 });

@@ -99,6 +99,7 @@ import { detectJobUrgency } from '@/lib/urgent/urgentJobDetector';
 import { EmployerTrustBadge } from '@/components/safety/EmployerTrustBadge';
 import { evaluateEmployerTrust } from '@/lib/safety/employerTrustEvaluator';
 import { VoiceSummaryButton } from '@/components/voice/VoiceSummaryButton';
+import { VoiceSpeechService } from '@/lib/voice/speechAssistant';
 import { TradeBidEstimatorModal } from '@/components/announcements/TradeBidEstimatorModal';
 import { PitchGeneratorModal } from '@/components/contact/PitchGeneratorModal';
 import { SitePhotoLogModal } from '@/components/announcements/SitePhotoLogModal';
@@ -1121,9 +1122,28 @@ export default function HomePage() {
     recognition.onresult = (event: { results: Array<Array<{ transcript: string }>> }) => {
       const transcript = event.results[0]?.[0]?.transcript;
       if (transcript) {
-        setSearchQuery(transcript);
         triggerHaptic([10, 20, 10]);
-        showToast('success', `Rozpoznano głosowo: "${transcript}"`);
+        // 100% free client-side natural language trade query parsing
+        const parsed = parseNaturalLanguageQuery(transcript);
+        setSearchQuery(parsed.cleanKeyword || transcript);
+
+        if (parsed.isUrgent) {
+          setActiveQuickFilter('urgent');
+        }
+        if (parsed.minSalary && parsed.minSalary >= 5000) {
+          setSortBy('price-desc');
+        }
+
+        const feedbackMsg = parsed.district
+          ? `Szukam: "${parsed.cleanKeyword}" w rejonie ${parsed.district}`
+          : `Szukam: "${parsed.cleanKeyword || transcript}"`;
+
+        showToast('success', feedbackMsg);
+
+        // Voice audio response (speechSynthesis - 100% free offline browser TTS)
+        if (VoiceSpeechService.isSupported()) {
+          VoiceSpeechService.speak(feedbackMsg, 'pl');
+        }
       }
     };
 

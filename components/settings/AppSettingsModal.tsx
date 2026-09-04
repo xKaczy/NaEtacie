@@ -35,7 +35,7 @@ interface AppSettingsModalProps {
 }
 
 export function AppSettingsModal({ isOpen, onClose }: AppSettingsModalProps) {
-  const { mode, setMode } = useTheme();
+  const { mode, setMode, ruggedMode, setRuggedMode, batterySaverMode, setBatterySaverMode } = useTheme();
   const { show } = useToast();
 
   // Settings State
@@ -178,6 +178,40 @@ export function AppSettingsModal({ isOpen, onClose }: AppSettingsModalProps) {
                     setSoundEffects(e.target.checked);
                     saveSetting('naetacie_pref_sound', e.target.checked);
                   }}
+                  className="w-4 h-4 accent-primary cursor-pointer"
+                />
+              </div>
+
+              {/* Rugged Construction Mode Toggle (Glove-Friendly Touch Targets) */}
+              <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-accent/20">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base">🧤</span>
+                  <div>
+                    <span className="text-xs font-semibold text-foreground">Tryb Budowlany (Powiększone Przyciski)</span>
+                    <p className="text-[11px] text-muted-foreground">Wygodna obsługa ekranu w rękawicach roboczych (min 48px)</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={ruggedMode}
+                  onChange={(e) => setRuggedMode(e.target.checked)}
+                  className="w-4 h-4 accent-primary cursor-pointer"
+                />
+              </div>
+
+              {/* Battery-Saver Mode Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl border border-border/60 bg-accent/20">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base">🔋</span>
+                  <div>
+                    <span className="text-xs font-semibold text-foreground">Oszczędzanie Baterii na Budowie</span>
+                    <p className="text-[11px] text-muted-foreground">Wyłącza rozmycia i animacje, przedłuża czas pracy telefonu</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={batterySaverMode}
+                  onChange={(e) => setBatterySaverMode(e.target.checked)}
                   className="w-4 h-4 accent-primary cursor-pointer"
                 />
               </div>

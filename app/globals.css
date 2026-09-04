@@ -95,6 +95,27 @@
   text-shadow: 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
+/* Rugged Construction Mode: Glove-friendly hit targets (min 48-56px), high contrast buttons */
+.rugged-mode button,
+.rugged-mode a,
+.rugged-mode input,
+.rugged-mode select {
+  min-height: 48px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+
+/* Battery-Saver Mode: Pause heavy CSS animations, glass blurs & glow filters */
+.battery-saver *,
+.battery-saver *::before,
+.battery-saver *::after {
+  animation-duration: 0.001s !important;
+  transition-duration: 0.001s !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+
 /* Map Job Markers Elevation & GPU-Accelerated Animations */
 .job-marker {
   position: relative;

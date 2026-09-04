@@ -17,6 +17,10 @@ export interface ThemeContextValue {
   setMode: (mode: ThemeMode) => void;
   outdoorMode: boolean;
   setOutdoorMode: (enabled: boolean) => void;
+  ruggedMode: boolean;
+  setRuggedMode: (enabled: boolean) => void;
+  batterySaverMode: boolean;
+  setBatterySaverMode: (enabled: boolean) => void;
 }
 
 const STORAGE_KEY = 'theme-preference';
@@ -58,6 +62,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>('system');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark' | 'oled'>('light');
   const [outdoorMode, setOutdoorModeState] = useState<boolean>(false);
+  const [ruggedMode, setRuggedModeState] = useState<boolean>(false);
+  const [batterySaverMode, setBatterySaverModeState] = useState<boolean>(false);
 
   // Initialize from localStorage on mount
   useEffect(() => {
@@ -68,6 +74,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setOutdoorModeState(storedOutdoor);
     if (storedOutdoor) {
       document.documentElement.classList.add('outdoor');
+    }
+
+    const storedRugged = localStorage.getItem('theme-rugged-mode') === 'true';
+    setRuggedModeState(storedRugged);
+    if (storedRugged) {
+      document.documentElement.classList.add('rugged-mode');
+    }
+
+    const storedBattery = localStorage.getItem('theme-battery-saver') === 'true';
+    setBatterySaverModeState(storedBattery);
+    if (storedBattery) {
+      document.documentElement.classList.add('battery-saver');
+    }
+
+    // Auto-detect battery level if supported by mobile browser
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nav = navigator as any;
+    if (nav.getBattery) {
+      nav.getBattery().then((battery: { level: number; charging: boolean }) => {
+        if (battery.level <= 0.2 && !battery.charging && !storedBattery) {
+          setBatterySaverModeState(true);
+          document.documentElement.classList.add('battery-saver');
+        }
+      }).catch(() => {});
     }
 
     const resolved = storedMode === 'system' ? getSystemTheme() : storedMode;
@@ -110,9 +140,39 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setRuggedMode = useCallback((enabled: boolean) => {
+    setRuggedModeState(enabled);
+    localStorage.setItem('theme-rugged-mode', String(enabled));
+    if (enabled) {
+      document.documentElement.classList.add('rugged-mode');
+    } else {
+      document.documentElement.classList.remove('rugged-mode');
+    }
+  }, []);
+
+  const setBatterySaverMode = useCallback((enabled: boolean) => {
+    setBatterySaverModeState(enabled);
+    localStorage.setItem('theme-battery-saver', String(enabled));
+    if (enabled) {
+      document.documentElement.classList.add('battery-saver');
+    } else {
+      document.documentElement.classList.remove('battery-saver');
+    }
+  }, []);
+
   const value = useMemo<ThemeContextValue>(
-    () => ({ mode, resolvedTheme, setMode, outdoorMode, setOutdoorMode }),
-    [mode, resolvedTheme, setMode, outdoorMode, setOutdoorMode]
+    () => ({
+      mode,
+      resolvedTheme,
+      setMode,
+      outdoorMode,
+      setOutdoorMode,
+      ruggedMode,
+      setRuggedMode,
+      batterySaverMode,
+      setBatterySaverMode,
+    }),
+    [mode, resolvedTheme, setMode, outdoorMode, setOutdoorMode, ruggedMode, setRuggedMode, batterySaverMode, setBatterySaverMode]
   );
 
   return (
